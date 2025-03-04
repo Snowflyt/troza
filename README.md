@@ -626,7 +626,7 @@ export function useStateful<State extends object>(initialState: State | (() => S
 Then you can use it like this:
 
 ```tsx
-function Counter({ initialCount = 0 }) {
+function Counter() {
   const { state, useAction, useComputed } = useStateful({ count: 0 });
   const { count } = state;
   const doubleCount = useComputed((state) => state.count * 2);
