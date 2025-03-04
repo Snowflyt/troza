@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/bundlephobia/minzip/troza.svg?label=bundle%20size&style=flat&colorA=000000&colorB=000000" alt="minzipped size" height="18">
   </a>
   <a href="https://coveralls.io/github/Snowflyt/troza?branch=main">
-    <img src="hhttps://img.shields.io/coverallsCoverage/github/Snowflyt/troza?branch=main&style=flat&colorA=000000&colorB=000000" alt="coverage status" height="18">
+    <img src="https://img.shields.io/coverallsCoverage/github/Snowflyt/troza?branch=main&style=flat&colorA=000000&colorB=000000" alt="coverage status" height="18">
   </a>
   <a href="https://github.com/Snowflyt/troza">
     <img src="https://img.shields.io/npm/l/troza.svg?style=flat&colorA=000000&colorB=000000" alt="MPL 2.0 license" height="18">
