@@ -2,12 +2,6 @@ import { createStore } from "troza";
 import { hookify } from "troza/react";
 
 const bookStore = createStore({
-  library: {
-    name: "City Central Library",
-    locations: ["Main Branch", "North Wing", "South Wing"],
-    activeLocation: "Main Branch",
-  },
-
   authors: [
     {
       id: 1,
@@ -155,20 +149,6 @@ const bookStore = createStore({
         })
         .slice(0, 3); // Just get top 3 recommendations
     },
-
-    // Books in the active library location
-    booksInActiveLocation() {
-      // Simulate this with a simple filter based on book IDs
-      const locationMap = {
-        "Main Branch": [101, 102, 301],
-        "North Wing": [201, 202],
-        "South Wing": [103, 302, 303],
-      };
-
-      const activeLocationBooks =
-        locationMap[this.library.activeLocation as keyof typeof locationMap] || [];
-      return this.allBooks.filter((book) => activeLocationBooks.includes(book.id));
-    },
   },
 
   // Actions directly available via `store.action()`
@@ -254,13 +234,6 @@ const bookStore = createStore({
     // Set the year range filter
     setYearRange(min: number, max: number) {
       this.filters.yearRange = { min, max };
-    },
-
-    // Set the active library location
-    setActiveLocation(location: string) {
-      if (this.library.locations.includes(location)) {
-        this.library.activeLocation = location;
-      }
     },
 
     // Update a user's favorite genres

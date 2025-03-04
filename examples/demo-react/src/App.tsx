@@ -2,7 +2,6 @@ import { useState } from "react";
 import AuthorSection from "./components/AuthorSection";
 import BookFilters from "./components/BookFilters";
 import BookList from "./components/BookList";
-import LibraryHeader from "./components/LibraryHeader";
 import RecommendationPanel from "./components/RecommendationPanel";
 import UserDashboard from "./components/UserDashboard";
 
@@ -13,7 +12,7 @@ function App() {
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8 flex flex-col items-center">
       <div className="container max-w-6xl mx-auto px-4 flex flex-col items-center">
         <header className="text-center mb-8 w-full">
-          <h1 className="text-4xl font-bold text-indigo-700 mb-4">Book Collection Manager</h1>
+          <h1 className="text-4xl font-bold text-indigo-700 mb-6">Book Collection Manager</h1>
           <p className="text-gray-600 mb-6">
             Built with React and{" "}
             <a
@@ -23,8 +22,6 @@ function App() {
             </a>{" "}
             state management
           </p>
-
-          <LibraryHeader />
 
           {/* Navigation Tabs */}
           <div className="flex justify-center mt-6 border-b border-gray-200">
