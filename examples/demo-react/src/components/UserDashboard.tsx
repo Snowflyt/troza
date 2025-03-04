@@ -15,8 +15,8 @@ const UserDashboard: React.FC = () => {
   // Filter books to get the ones borrowed by user and in reading list
   // Dependencies are also automatically tracked here to avoid unnecessary rerenders
   const [borrowedBookObjects, readingListObjects] = useBookStore((state) => [
-    state.allBooks.filter((book) => user.borrowedBooks.includes(book.id)),
-    state.allBooks.filter((book) => user.readingList.includes(book.id)),
+    state.allBooks.filter((book) => state.user.borrowedBooks.includes(book.id)),
+    state.allBooks.filter((book) => state.user.readingList.includes(book.id)),
   ]);
 
   const getAuthorForBook = (bookId: number) => {
