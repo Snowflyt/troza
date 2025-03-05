@@ -257,9 +257,9 @@ const store = createStore({
         draft.todos = todos.slice(0, 10);
       });
       // Or
-      this.set({ loading: false, todos: todos.slice(0, 10) });
+      this.$set({ loading: false, todos: todos.slice(0, 10) });
       // Or
-      this.set((prev) => ({
+      this.$set((prev) => ({
         ...prev,
         loading: false,
         todos: todos.slice(0, 10),
@@ -416,7 +416,7 @@ store.$subscribe(
 );
 ```
 
-This behavior is similar to [`watch`](https://vuejs.org/guide/essentials/watchers.html#watch-source-types)—except that Troza always operates on immutable objects rather than reactive ones.
+This behavior is similar to [`watch`](https://vuejs.org/guide/essentials/watchers.html#watch-source-types) in Vue 3—except that Troza always operates on immutable objects rather than reactive ones.
 
 Remember that the same rules for selectors in `useStore` apply here, so avoid using external variables within the selector.
 
