@@ -56,6 +56,16 @@ export interface StoreBase<State extends object, Computed extends ComputedOption
    */
   $set(setter: (prevState: Readonly<State>) => State): void;
   /**
+   * Patch the state of the store with a partial state.
+   * @param newState The partial state to patch.
+   */
+  $patch(newState: Partial<Readonly<State>>): void;
+  /**
+   * Patch the state of the store using a patcher function.
+   * @param patcher A function that takes the previous state and returns the partial state to patch.
+   */
+  $patch(patcher: (prevState: Readonly<State>) => Partial<State>): void;
+  /**
    * Update the state of the store using an updater function.
    * @param updater A function that takes the immer draft of the state and updates it.
    */
@@ -409,6 +419,14 @@ export function createStore<
     if (typeof newStateOrSetter === "function") setState(newStateOrSetter(_state));
     else setState(newStateOrSetter);
   };
+  const patch = (newStateOrPatcher: Partial<State> | ((prevState: State) => Partial<State>)) => {
+    if (typeof newStateOrPatcher === "function") {
+      const patcher = newStateOrPatcher as (prevState: State) => Partial<State>;
+      setState({ ..._state, ...patcher(_state) });
+      return;
+    }
+    setState({ ..._state, ...newStateOrPatcher });
+  };
   const update = (updater: (draft: Draft<State>) => void) => {
     setState(
       produce(_state, (draft) => {
@@ -466,6 +484,7 @@ export function createStore<
     $getInitialState: getInitialState,
 
     $set: set,
+    $patch: patch,
     $update: update,
 
     $subscribe: subscribe,

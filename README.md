@@ -238,10 +238,10 @@ const store = createStore({
 });
 ```
 
-However, async actions prevent Troza from batching updates, which usually won’t cause extra re-renders but will trigger `$subscribe` on every update (see [the later section](#using-in-vanilla-JavaScript)). If you prefer to batch updates manually, you can use `this.$set` or `this.$update` (which are also accessible via `store.$set` and `store.$update`).
+However, async actions prevent Troza from batching updates, which usually won’t cause extra re-renders but will trigger `$subscribe` on every update (see [the later section](#using-in-vanilla-JavaScript)). If you prefer to batch updates manually, you can use `this.$set`, `this.$patch` or `this.$update` (which are also accessible via `store.$set`, `store.$patch` and `store.$update`).
 
 <details>
-  <summary>Click to see an example of using <code>this.$set</code> and <code>this.$update</code></summary>
+  <summary>Click to see an example of using <code>this.$set</code>, <code>this.$patch</code> and <code>this.$update</code></summary>
 
 ```typescript
 const store = createStore({
@@ -264,6 +264,9 @@ const store = createStore({
         loading: false,
         todos: todos.slice(0, 10),
       }));
+      // `$patch` is similar to `$set` but updates with partial state
+      // this.$patch({ loading: false });
+      // this.$patch((prev) => ({ loading: !prev.loading }));
     },
   },
 });

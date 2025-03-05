@@ -27,6 +27,24 @@ describe("Basic State Management", () => {
     expect(store.$get().count).toBe(6);
   });
 
+  test("$patch should update the state with partial changes", () => {
+    const store = createStore({
+      count: 0,
+      text: "hello",
+      nested: { value: 10 },
+    });
+
+    store.$patch({ count: 5 });
+    expect(store.$get().count).toBe(5);
+    expect(store.$get().text).toBe("hello"); // Other properties remain unchanged
+
+    // Using patcher function
+    store.$patch((state) => ({ count: state.count + 1, nested: { value: 20 } }));
+    expect(store.$get().count).toBe(6);
+    expect(store.$get().text).toBe("hello"); // Unchanged from previous patch
+    expect(store.$get().nested.value).toBe(20);
+  });
+
   test("$update should update the state using immer", () => {
     const store = createStore({
       count: 0,
