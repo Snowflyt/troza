@@ -59,6 +59,53 @@ describe("Basic State Management", () => {
     expect(store.$get().count).toBe(1);
     expect(store.$get().nested.value).toBe(20);
   });
+
+  test("store object should allow direct access to state and computed properties", () => {
+    const store = createStore({
+      count: 0,
+      text: "hello",
+      computed: {
+        doubled() {
+          return this.count * 2;
+        },
+      },
+      actions: {
+        increment() {
+          this.count += 1;
+        },
+      },
+    });
+
+    // Direct access to state properties
+    expect(store.count).toBe(0);
+    expect(store.text).toBe("hello");
+
+    // Direct access to computed properties
+    expect(store.doubled).toBe(0);
+
+    // Verify direct access matches $get() values
+    expect(store.count).toBe(store.$get().count);
+    expect(store.text).toBe(store.$get().text);
+    expect(store.doubled).toBe(store.$get().doubled);
+
+    // Update state and verify direct access reflects changes
+    store.increment();
+    expect(store.count).toBe(1);
+    expect(store.doubled).toBe(2);
+
+    // Update via $set and verify direct access
+    store.$set({ count: 5, text: "updated" });
+    expect(store.count).toBe(5);
+    expect(store.text).toBe("updated");
+    expect(store.doubled).toBe(10);
+
+    // Update directly on the store object
+    store.count = 10;
+    expect(store.count).toBe(10);
+    expect(store.$get().count).toBe(10);
+    expect(store.doubled).toBe(20);
+    expect(store.$get().doubled).toBe(20);
+  });
 });
 
 describe("Computed States", () => {

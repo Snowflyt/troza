@@ -30,7 +30,10 @@ export type Store<
   State extends object,
   Computed extends ComputedOptions,
   Actions extends Record<string, (...args: never) => unknown>,
-> = StoreBase<State, Computed> & Readonly<Actions>;
+> = StoreBase<State, Computed> &
+  State &
+  Readonly<ExtractComputedReturns<Computed>> &
+  Readonly<Actions>;
 export interface ReadonlyStoreBase<State extends object, Computed extends ComputedOptions> {
   /**
    * Get the current state of the store.
@@ -497,90 +500,87 @@ export function createStore<
   const computedNames = new Set(Object.keys(computed));
   const actionNames = new Set(Object.keys(actions));
 
-  const thisArg = new Proxy(
-    {},
-    {
-      get: (_, prop, receiver) => {
-        if (typeof prop === "string" && (helperMethodNames.has(prop) || actionNames.has(prop)))
-          return (store as any)[prop];
+  const proxiedStore = new Proxy(store, {
+    get: (target, prop, receiver) => {
+      if (typeof prop === "string" && (helperMethodNames.has(prop) || actionNames.has(prop)))
+        return Reflect.get(target, prop, receiver);
 
-        if (typeof prop === "string" && computedNames.has(prop)) {
-          const cache = computedCache.get(prop);
-          const state = _draft ? (current(_draft) as State) : _state;
-          if (
-            cache &&
-            !isChanged(cache.state, state, cache.affected, new WeakMap(), isOriginalEqual)
-          ) {
-            touchAffected(state, cache.state, cache.affected);
-            return cache.cachedResult;
-          }
-          const affected: Affected = new WeakMap();
-          const proxy = createProxy(state, affected, undefined, targetCache);
-          activeStateProxies.push(proxy);
-          const thisArg = getComputedThis(_computedState, proxy);
-          const value = untrack(computed[prop as keyof Computed]!.call(thisArg));
-          activeStateProxies.pop();
-          touchAffected(state, state, affected);
-          computedCache.set(prop, { state, affected, cachedResult: value });
-          return value;
+      if (typeof prop === "string" && computedNames.has(prop)) {
+        const cache = computedCache.get(prop);
+        const state = _draft ? (current(_draft) as State) : _state;
+        if (
+          cache &&
+          !isChanged(cache.state, state, cache.affected, new WeakMap(), isOriginalEqual)
+        ) {
+          touchAffected(state, cache.state, cache.affected);
+          return cache.cachedResult;
         }
+        const affected: Affected = new WeakMap();
+        const proxy = createProxy(state, affected, undefined, targetCache);
+        activeStateProxies.push(proxy);
+        const thisArg = getComputedThis(_computedState, proxy);
+        const value = untrack(computed[prop as keyof Computed]!.call(thisArg));
+        activeStateProxies.pop();
+        touchAffected(state, state, affected);
+        computedCache.set(prop, { state, affected, cachedResult: value });
+        return value;
+      }
 
-        if (_draft) return Reflect.get(_draft, prop, receiver);
+      if (_draft) return Reflect.get(_draft, prop, receiver);
 
-        let result: any;
-        setState(
-          produce(_state, (draft) => {
-            _draft = draft;
-            try {
-              result = undraft(Reflect.get(draft, prop, receiver));
-            } finally {
-              _draft = null;
-            }
-          }),
-        );
-        return result;
-      },
-
-      set: (_, prop, value, receiver) => {
-        if (_draft) return Reflect.set(_draft, prop, value, receiver);
-
-        let success = false;
-        setState(
-          produce(_state, (draft) => {
-            _draft = draft;
-            success = Reflect.set(draft, prop, value, receiver);
-            _draft = null;
-          }),
-        );
-        return success;
-      },
-
-      deleteProperty: (_, prop) => {
-        if (_draft) return Reflect.deleteProperty(_draft, prop);
-
-        let success = false;
-        setState(
-          produce(_state, (draft) => {
-            _draft = draft;
-            success = Reflect.deleteProperty(draft, prop);
-            _draft = null;
-          }),
-        );
-        return success;
-      },
-    },
-  );
-
-  for (const key in actions) {
-    const handler = actions[key]!;
-    (store as any)[key] = renameFunction((...args: never) => {
-      if (_draft) return handler.apply(thisArg, args);
       let result: any;
       setState(
         produce(_state, (draft) => {
           _draft = draft;
           try {
-            result = undraft(handler.apply(thisArg, args));
+            result = undraft(Reflect.get(draft, prop, receiver));
+          } finally {
+            _draft = null;
+          }
+        }),
+      );
+      return result;
+    },
+
+    set: (_, prop, value, receiver) => {
+      if (_draft) return Reflect.set(_draft, prop, value, receiver);
+
+      let success = false;
+      setState(
+        produce(_state, (draft) => {
+          _draft = draft;
+          success = Reflect.set(draft, prop, value, receiver);
+          _draft = null;
+        }),
+      );
+      return success;
+    },
+
+    deleteProperty: (_, prop) => {
+      if (_draft) return Reflect.deleteProperty(_draft, prop);
+
+      let success = false;
+      setState(
+        produce(_state, (draft) => {
+          _draft = draft;
+          success = Reflect.deleteProperty(draft, prop);
+          _draft = null;
+        }),
+      );
+      return success;
+    },
+  });
+
+  for (const key in actions) {
+    const handler = actions[key]!;
+    (store as any)[key] = renameFunction((...args: never) => {
+      if (_draft) return handler.apply(proxiedStore, args);
+      let result: any;
+      setState(
+        produce(_state, (draft) => {
+          _draft = draft;
+          try {
+            result = undraft(handler.apply(proxiedStore, args));
           } finally {
             _draft = null;
           }
@@ -590,7 +590,8 @@ export function createStore<
     }, key);
   }
 
-  return Object.freeze(store) as any;
+  Object.freeze(store);
+  return proxiedStore as any;
 }
 
 /*********

@@ -276,6 +276,46 @@ Note that you don’t need to use `this.$set` or `this.$update` if you are using
 
 </details>
 
+### Directly accessing state and computed states
+
+Besides calling actions on your store, you can also directly read state and computed states from the store object. For example:
+
+```typescript
+const store = createStore({
+  count: 0,
+  computed: {
+    doubleCount() {
+      return this.count * 2;
+    },
+  },
+});
+
+console.log(store.count); // 0
+store.count++;
+console.log(store.count); // 1
+console.log(store.doubleCount); // 2
+```
+
+While this direct access is possible, it’s not recommended. You’re actually accessing the Immer drafts directly and bypassing Troza’s dependency tracking mechanism. For example, consider this `Counter` component:
+
+```tsx
+const counterStore = createStore({ count: 0 });
+
+function Counter() {
+  return <div>{store.count}</div>;
+}
+
+function CounterControls() {
+  return <button onClick={() => (store.count += 1)}>One up</button>;
+}
+```
+
+Since React isn’t aware of these direct mutations, you need to use useStore or useCounterStore to subscribe to state changes for proper re-rendering.
+
+Additionally, direct access prevents Troza from batching updates. Under the hood, a new Immer draft is created on each action call, which can hurt performance if actions are triggered in rapid succession. To batch updates manually, you can use `store.$set`, `store.$patch` and `store.$update`, as described in the [async actions section](#async-actions).
+
+However, direct access might be convenient for updating a single state value without the need to create a dedicated action.
+
 ### Slices pattern
 
 The `createStore` function enforces the separation of state, computed states, and actions, which helps TypeScript infer types easily. This design works well for small stores, but as your store grows, you might want a logical separation of state rather than a strict physical one. In that case, the slices pattern is ideal:
