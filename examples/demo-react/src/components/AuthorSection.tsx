@@ -4,7 +4,7 @@ import bookStore, { useBookStore } from "../stores/book";
 const { addBook } = bookStore;
 
 const AuthorSection: React.FC = () => {
-  const authors = useBookStore((state) => state.authors);
+  const { authors } = useBookStore();
 
   // State for new book form
   const [selectedAuthorId, setSelectedAuthorId] = useState<number | null>(null);

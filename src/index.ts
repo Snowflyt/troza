@@ -1,53 +1,48 @@
-import type { Draft } from "immer";
-import { Immer, current, isDraft } from "immer";
-import { createProxy, getUntracked, isChanged, trackMemo } from "proxy-compare";
-
-/**
- * Force TypeScript to evaluate {@linkcode T} eagerly.
- *
- * This is just used to make type information more readable on hover.
- */
-type Prettify<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
-
-export type ComputedOptions = Record<
-  string,
-  // The usage of `any` as return type here is intentional to avoid circular type references.
-  // Don’t try to replace with `unknown`.
-  // Quite ridiculous, isn’t it? Sometimes seemingly same things are not the same in TypeScript.
-  () => any
->;
-export type ExtractComputedReturns<Computed extends ComputedOptions> = {
-  readonly [K in keyof Computed as Computed[K] extends (...args: never) => unknown ? K
-  : never]: Computed[K] extends (...args: never) => infer R ? R : never;
-};
+import {
+  createProxy as createProxyToCompare,
+  getUntracked,
+  isChanged,
+  trackMemo,
+} from "proxy-compare";
 
 /**
  * A store that holds a state and actions to update the state.
  *
- * @see {@linkcode createStore} for how to create a store.
+ * @see {@linkcode create} for how to create a store.
  */
 export type Store<
   State extends object,
-  Computed extends ComputedOptions,
-  Actions extends Record<string, (...args: never) => unknown>,
-> = StoreBase<State, Computed> &
-  State &
-  Readonly<ExtractComputedReturns<Computed>> &
-  Readonly<Actions>;
-export interface ReadonlyStoreBase<State extends object, Computed extends ComputedOptions> {
+  Computed extends object,
+  Actions extends Record<string, (...args: never) => any>,
+> = StoreBase<State, Computed, Actions> & State & Computed & Actions;
+export interface StoreBase<
+  State extends object,
+  Computed extends object,
+  Actions extends Record<string, (...args: never) => any>,
+> {
+  /**
+   * Run an action on the store.
+   * @param action
+   */
+  $act<Args extends unknown[], R>(
+    action: (
+      this: StoreBase<State, Computed, Actions> & Prettify<State & Computed & Actions>,
+      ...args: Args
+    ) => R,
+    args?: Args,
+  ): R;
+
   /**
    * Get the current state of the store.
    * @returns The current state.
    */
-  $get(): Readonly<State & ExtractComputedReturns<Computed>>;
+  $get(): PrettifyReadonly<State & Computed>;
   /**
    * Get the initial state of the store.
    * @returns The initial state.
    */
-  $getInitialState(): Readonly<State & ExtractComputedReturns<Computed>>;
-}
-export interface StoreBase<State extends object, Computed extends ComputedOptions>
-  extends ReadonlyStoreBase<State, Computed> {
+  $getInitialState(): PrettifyReadonly<State & Computed>;
+
   /**
    * Set the state of the store with a new state.
    * @param newState The new state to set.
@@ -69,20 +64,23 @@ export interface StoreBase<State extends object, Computed extends ComputedOption
    */
   $patch(patcher: (prevState: Readonly<State>) => Partial<State>): void;
   /**
-   * Update the state of the store using an updater function.
-   * @param updater A function that takes the immer draft of the state and updates it.
+   * Update the state of the store with mutable-style updates.
+   * @param updater A function that takes the state and updates it.
    */
-  $update(updater: (draft: Draft<State>) => void): void;
+  $update(updater: (state: Prettify<State & Computed>) => void): void;
 
   /**
    * Subscribe to changes in the store.
+   *
+   * NOTE: Subscribers are only attempted to be triggered after the next state change rather than
+   * immediately upon creation.
    * @param subscriber The function to call when the state changes.
    * @returns A function to unsubscribe from the store.
    */
   $subscribe(
     subscriber: (
-      state: Prettify<Readonly<State & ExtractComputedReturns<Computed>>>,
-      prevState: Prettify<Readonly<State & ExtractComputedReturns<Computed>>>,
+      state: PrettifyReadonly<State & Computed>,
+      prevState: PrettifyReadonly<State & Computed>,
     ) => void,
   ): () => void;
   /**
@@ -90,19 +88,31 @@ export interface StoreBase<State extends object, Computed extends ComputedOption
    *
    * Dependencies are automatically tracked in the selector function, so feel free to use selectors
    * like `(state) => ({ foo: state.foo, bar: state.bar })`.
+   *
+   * NOTE: Subscribers are only attempted to be triggered after the next state change rather than
+   * immediately upon creation.
    * @param selector A function that takes the state and returns the selected value.
    * @param subscriber The function to call when the selected value changes.
    * @returns A function to unsubscribe from the store.
    */
   $subscribe<Selected>(
-    selector: (state: Prettify<Readonly<State & ExtractComputedReturns<Computed>>>) => Selected,
+    selector: (state: PrettifyReadonly<State & Computed>) => Selected,
     subscriber: (value: Selected, prevValue: Selected) => void,
   ): () => void;
 
+  /**
+   * Watch for changes in the store and call the watcher function whenever the auto-tracked
+   * dependencies change.
+   *
+   * NOTE: Like subscribers, watchers are only attempted to be triggered after the next state change
+   * rather than immediately upon creation. Therefore, avoid using them to trigger side effects that
+   * should run immediately.
+   * @param watch
+   */
   $watch(
     watch: (
-      state: Prettify<Readonly<State & ExtractComputedReturns<Computed>>>,
-      prevState: Prettify<Readonly<State & ExtractComputedReturns<Computed>>>,
+      state: PrettifyReadonly<State & Computed>,
+      prevState: PrettifyReadonly<State & Computed>,
     ) => void | Promise<void>,
   ): () => void;
 }
@@ -114,24 +124,11 @@ export type ExtractState<S> =
   S extends (
     Store<
       infer State,
-      infer _ComputedOptions,
+      infer _Computed,
       infer _Actions extends Record<string, (...args: never) => unknown>
     >
   ) ?
     State
-  : never;
-/**
- * Extract the computed options type from a {@linkcode Store}.
- */
-export type ExtractComputedOptions<S> =
-  S extends (
-    Store<
-      infer _State,
-      infer ComputedOptions,
-      infer _Actions extends Record<string, (...args: never) => unknown>
-    >
-  ) ?
-    ComputedOptions
   : never;
 /**
  * Extract the computed type from a {@linkcode Store}.
@@ -140,11 +137,11 @@ export type ExtractComputed<S> =
   S extends (
     Store<
       infer _State,
-      infer ComputedOptions,
+      infer Computed,
       infer _Actions extends Record<string, (...args: never) => unknown>
     >
   ) ?
-    ExtractComputedReturns<ComputedOptions>
+    Computed
   : never;
 /**
  * Extract the actions type from a {@linkcode Store}.
@@ -167,9 +164,7 @@ export type ExtractActions<S> =
  *
  * @example
  * ```typescript
- * const store = createStore({
- *   // All properties other than `computed` and `actions` are considered part of the state
- *   // Initial values are set here
+ * const store = create({
  *   count: 0,
  *   bookshelf: {
  *     books: [
@@ -178,44 +173,36 @@ export type ExtractActions<S> =
  *     ],
  *   },
  *
- *   // Computed states goes into the `computed` property
- *   computed: {
- *     doubleCount() {
- *       return this.count * 2;
- *     },
- *     // Computed states are cached depending on their auto-tracked dependencies
- *     readBooks() {
- *       // Re-run only when `bookshelf.books` changes
- *       return this.bookshelf.books.filter((book) => book.read);
- *     },
+ *   // Computed states can be defined via the `get` helper
+ *   [get("doubleCount")]() {
+ *     return this.count * 2;
+ *   },
+ *   // Computed states are cached depending on their auto-tracked dependencies
+ *   [get("readBooks")]() {
+ *     // Re-run only when `bookshelf.books` changes
+ *     return this.bookshelf.books.filter((book) => book.read);
  *   },
  *
- *   // All actions go into the `actions` property
- *   actions: {
- *     incBy(by: number) {
- *       // The immer draft of the state is accessible as `this`
- *       this.count += by;
- *     },
- *     inc() {
- *       // You can call other actions from within an action
- *       this.incBy(1); // Or `store.incBy(1)`
- *     },
- *     markRead(title: string) {
- *       // You can access computed states in actions (or other computed states)
- *       if (this.readBooks.some((book) => book.title === title)) {
- *         throw new Error("Book already read");
- *       }
- *       const book = this.bookshelf.books.find((book) => book.title === title);
- *       if (book) book.read = true;
- *     },
- *     addBook(title: string, pages: number) {
- *       const book = { title, pages, read: false };
- *       // The immer draft of the state is accessible as `this`
- *       this.bookshelf.books.push(book);
- *       // You can return a value from an action,
- *       // which is especially useful for async operations
- *       return book;
- *     },
+ *   // Actions are just function properties
+ *   incBy(by: number) {
+ *     // The state can be mutated via `this`
+ *     this.count += by;
+ *   },
+ *   inc() {
+ *     // You can call other actions from within an action
+ *     this.incBy(1); // Or `store.incBy(1)`
+ *   },
+ *   markRead(title: string) {
+ *     // You can access computed states in actions (or other computed states)
+ *     if (this.readBooks.some((book) => book.title === title)) {
+ *       throw new Error("Book already read");
+ *     }
+ *     this.bookshelf.books.find((book) => book.title === title)?.read = true;
+ *   },
+ *   addBook(title: string, pages: number) {
+ *     const book = { title, pages, read: false };
+ *     this.bookshelf.books.push(book);
+ *     return book;
  *   },
  * });
  *
@@ -229,7 +216,7 @@ export type ExtractActions<S> =
  * const state2 = store.$get();
  * // { count: 2, bookshelf: [...], doubleCount: [Getter], readBooks: [Getter] }
  *
- * // Each action creates a new state with immer
+ * // Each action creates a new state
  * console.log(state1 === state2); // false
  * console.log(state1); // { count: 0, bookshelf: [...], doubleCount: [Getter], readBooks: [Getter] }
  *
@@ -256,58 +243,66 @@ export type ExtractActions<S> =
  * // to: { count: 3, bookshelf: [...], doubleCount: [Getter], readBooks: [Getter] }
  * ```
  *
- * @see {@linkcode createSlice} for how to create a store with slices.
+ * @see {@linkcode slice} for how to create a store with slices.
  * @see {@linkcode useStore} and {@linkcode hookify} for how to use this store in a React component.
  */
-export function createStore<
-  State extends object,
-  Computed extends ComputedOptions = {},
-  Actions extends Record<string, (...args: never) => unknown> = {},
->(
-  slice: State & {
-    computed?: Computed &
-      ThisType<
-        ReadonlyStoreBase<Prettify<Omit<State, "computed" | "actions">>, Computed> &
-          Prettify<
-            Readonly<
-              Omit<State, "computed" | "actions"> &
-                ExtractComputedReturns<Computed> & {
-                  [K in keyof Actions]: Actions[K];
-                }
-            >
-          >
-      >;
-    actions?: Actions &
-      ThisType<
-        StoreBase<Prettify<Omit<State, "computed" | "actions">>, Computed> &
-          Prettify<
-            Omit<State, "computed" | "actions"> &
-              ExtractComputedReturns<Computed> & {
-                readonly [K in keyof Actions]: Actions[K];
-              }
-          >
-      >;
-  },
-): Store<Prettify<Omit<State, "computed" | "actions">>, Computed, Actions> {
-  type ComputedState = Readonly<State & ExtractComputedReturns<Computed>>;
+export function create<Slice extends object>(
+  slice: Slice &
+    ThisType<
+      StoreBase<
+        Prettify<ExtractSliceState<Slice>>,
+        Prettify<ExtractSliceComputed<Slice>>,
+        Prettify<ExtractSliceActions<Slice>>
+      > &
+        Prettify<
+          ExtractSliceState<Slice> & ExtractSliceComputed<Slice> & ExtractSliceActions<Slice>
+        >
+    >,
+): Store<
+  Prettify<ExtractSliceState<Slice>>,
+  Prettify<ExtractSliceComputed<Slice>>,
+  Prettify<ExtractSliceActions<Slice>>
+> {
+  type State = ExtractSliceState<Slice>;
+  type Computed = ExtractSliceComputed<Slice>;
+  type ComputedOptions = { [K in keyof Computed]: () => Computed[K] };
+  type Actions = ExtractSliceActions<Slice>;
 
-  const { actions: _actions, computed: _computed, ...initialState } = slice;
-  const computed = _computed || ({} as Computed);
-  const actions = _actions || ({} as Actions);
+  type ComputedState = State & Computed;
 
-  let _state = initialState as Readonly<State>;
+  readonly(slice, true);
+
+  const initialState = {} as State;
+  const computed = {} as ComputedOptions;
+  const actions = {} as Actions;
+
+  for (const key of Reflect.ownKeys(slice)) {
+    const descriptor = Object.getOwnPropertyDescriptor(slice, key)!;
+
+    if (
+      typeof key === "string" &&
+      key.startsWith(getterNamePrefix) &&
+      typeof descriptor.value === "function"
+    ) {
+      Object.defineProperty(computed, key.slice(getterNamePrefix.length), {
+        value: descriptor.value,
+        enumerable: true,
+      });
+      continue;
+    }
+
+    if (typeof descriptor.value === "function") {
+      Object.defineProperty(actions, key, descriptor);
+      continue;
+    }
+
+    Object.defineProperty(initialState, key, descriptor);
+  }
+
+  let _state = initialState;
   let _computedState!: ComputedState;
-  let _draft: Draft<State> | null = null;
 
-  const getInitialState = () => _initialComputedState;
-
-  const listeners = new Set<
-    (
-      state: Readonly<State & ExtractComputedReturns<Computed>>,
-      prevState: Readonly<State & ExtractComputedReturns<Computed>>,
-    ) => void
-  >();
-
+  const listeners = new Set<(state: ComputedState, prevState: ComputedState) => void>();
   const setState = (state: State) => {
     if (Object.is(state, _state)) return;
     const prevState = _computedState;
@@ -316,35 +311,85 @@ export function createStore<
     for (const listener of listeners) listener(_computedState, prevState);
   };
 
+  let inAction = false;
+  let mutationCache = new WeakMap<object, Record<string | symbol, ["set", unknown] | ["del"]>>();
+  const flushCache = new WeakMap<object, object>();
+  const getFlushed = <T = State>(obj: T = _state as T): T => {
+    if (!isObject(obj)) return obj;
+    const mutations = mutationCache.get(obj);
+    if (!mutations) return obj;
+    if (!mutations[DIRTY_SYMBOL]) return flushCache.get(obj) as T;
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete mutations[DIRTY_SYMBOL];
+    const newObj: any = Array.isArray(obj) ? [] : {};
+    flushCache.set(obj, newObj);
+    for (const key of new Set(Reflect.ownKeys(obj).concat(Reflect.ownKeys(mutations)))) {
+      if (key in mutations) {
+        const [type, value] = mutations[key]!;
+        if (type === "set") {
+          const desc = Reflect.getOwnPropertyDescriptor(obj, key);
+          if (desc) {
+            desc.value = readonly(value, true) as never;
+            Object.defineProperty(newObj, key, desc);
+          } else {
+            Object.defineProperty(newObj, key, {
+              value: readonly(value, true),
+              enumerable: true,
+              configurable: true,
+            });
+          }
+        }
+        continue;
+      }
+      if (Object.getOwnPropertyDescriptor(newObj, key))
+        // Only the known case is Array.length so far.
+        continue;
+      const desc = Reflect.getOwnPropertyDescriptor(obj, key)!;
+      if ("value" in desc && desc.configurable) desc.value = getFlushed(Reflect.get(obj, key));
+      Object.defineProperty(newObj, key, desc);
+    }
+    return newObj;
+  };
+  const flushMutations = () => {
+    if (!mutationCache.has(_state)) return;
+    setState(getFlushed());
+    mutationCache = new WeakMap();
+  };
+
+  const getInitialState = () => _initialComputedState;
+
   const computedCache = new Map<
     string,
-    { state: Readonly<State>; affected: Affected; cachedResult: unknown }
+    { state: State; affected: Affected; cachedResult: unknown }
   >();
 
-  const getComputedThis = (computedState: ComputedState, stateProxy?: State) => {
+  const getComputedThis = (computedState: ComputedState, stateProxy: State) => {
     const get = () => computedState;
     const thisArg = { $get: get, $getInitialState: getInitialState };
     for (const key of Reflect.ownKeys(computedState)) {
-      const descriptor = Reflect.getOwnPropertyDescriptor(computedState, key)!;
-      if (!stateProxy || descriptor.get) {
-        Reflect.defineProperty(thisArg, key, descriptor);
+      const desc = Reflect.getOwnPropertyDescriptor(computedState, key)!;
+      if (desc.get) {
+        Reflect.defineProperty(thisArg, key, desc);
       } else {
-        const desc = { ...descriptor, get: () => (stateProxy as any)[key] };
+        desc.get = () => (stateProxy as any)[key];
         delete desc.value;
         delete desc.writable;
         Reflect.defineProperty(thisArg, key, desc);
       }
     }
     for (const key in actions) {
-      const handler = actions[key]!;
+      const handler = actions[key];
       const fn = renameFunction((...args: never) => handler.apply(thisArg, args), "key");
       (thisArg as any)[key] = fn;
     }
     return thisArg;
   };
 
+  const snapshotCache = new WeakMap<object, ComputedState>();
   const snapshotComputedState = (state: State) => {
+    if (snapshotCache.has(state)) return snapshotCache.get(state)!;
     const computedState = { ...state } as ComputedState;
+    snapshotCache.set(state, computedState);
 
     const cache = new Map<string, { state: State; affected: Affected; cachedResult: unknown }>();
     for (const [key, { affected, cachedResult, state: prevState }] of computedCache)
@@ -354,7 +399,7 @@ export function createStore<
       }
 
     for (const key in computed) {
-      const getter = computed[key]!;
+      const getter = computed[key];
       Object.defineProperty(computedState, key, {
         get: () => {
           if (cache.has(key)) {
@@ -381,7 +426,7 @@ export function createStore<
           }
 
           const affected: Affected = new WeakMap();
-          const proxy = createProxy(state, affected, undefined, targetCache);
+          const proxy = createProxyToCompare(state, affected, undefined, targetCache);
           activeStateProxies.push(proxy);
           const thisArg = getComputedThis(computedState, proxy);
           const value = untrack(getter.call(thisArg));
@@ -393,29 +438,33 @@ export function createStore<
           // (to avoid corrupt latest computed cache)
           if (
             !computedCache.has(key) ||
-            !isChanged(
-              state,
-              _draft ? current(_draft) : _state,
-              affected,
-              new WeakMap(),
-              isOriginalEqual,
-            )
+            !isChanged(state, getFlushed(), affected, new WeakMap(), isOriginalEqual)
           )
             computedCache.set(key, { state, affected, cachedResult: value });
           cache.set(key, { state, affected, cachedResult: value });
           return value;
         },
         enumerable: true,
+        configurable: true,
       });
     }
 
     return computedState;
   };
 
-  const _initialComputedState = snapshotComputedState(initialState as State);
+  const _initialComputedState = snapshotComputedState(initialState);
   _computedState = _initialComputedState;
 
   /* Base store methods */
+  const act = <R>(action: (...args: never) => R, args: unknown[] = []): R => {
+    if (inAction) return action.apply(proxiedStore, args as never);
+    inAction = true;
+    const result = action.apply(proxiedStore, args as never);
+    flushMutations();
+    inAction = false;
+    return result;
+  };
+
   const get = () => _computedState;
 
   const set = (newStateOrSetter: State | ((prevState: State) => State)) => {
@@ -430,12 +479,8 @@ export function createStore<
     }
     setState({ ..._state, ...newStateOrPatcher });
   };
-  const update = (updater: (draft: Draft<State>) => void) => {
-    setState(
-      produce(_state, (draft) => {
-        updater(draft);
-      }),
-    );
+  const update = (updater: (state: ComputedState) => void) => {
+    act(() => updater.call(undefined, proxiedStore as never));
   };
 
   const subscribe = <Selected>(
@@ -471,7 +516,7 @@ export function createStore<
       throw new TypeError("The watcher to $watch must be a function.");
 
     let _prevState: ComputedState;
-    const fn = memoizeSelector((state: ComputedState) => watcher(state, _prevState!));
+    const fn = memoizeSelector((state: ComputedState) => watcher(state, _prevState));
     const listener = (state: ComputedState, prevState: ComputedState) => {
       _prevState = prevState;
       void fn(state);
@@ -483,130 +528,277 @@ export function createStore<
   };
 
   const store = {
-    $get: get,
-    $getInitialState: getInitialState,
+    $act: act,
 
-    $set: set,
-    $patch: patch,
-    $update: update,
+    $get: get as never,
+    $getInitialState: getInitialState as never,
+
+    $set: set as never,
+    $patch: patch as never,
+    $update: update as never,
 
     $subscribe: subscribe,
 
     $watch: watch as never,
-  } satisfies StoreBase<State, Computed>;
+  } satisfies StoreBase<State, Computed, Actions>;
 
   /* Actions */
   const helperMethodNames = new Set(Object.keys(store));
   const computedNames = new Set(Object.keys(computed));
   const actionNames = new Set(Object.keys(actions));
 
+  const proxyCache = new WeakMap<object, object>();
+  const childrenCache = new WeakMap<object, Record<string | symbol, object>>();
+  const parentsCache = new WeakMap<object, Set<object>>();
+
+  const unlinkCache = (target: object, prop: string | symbol) => {
+    const children = childrenCache.get(target);
+    if (children) {
+      const child = children[prop];
+      if (child) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete children[prop];
+        const childParents = parentsCache.get(child);
+        if (childParents) childParents.delete(target);
+      }
+    }
+  };
+
+  const markDirty = (target: object) => {
+    if (!mutationCache.has(target)) mutationCache.set(target, {});
+    (mutationCache.get(target) as any)[DIRTY_SYMBOL] = true;
+    const parents = parentsCache.get(target);
+    if (!parents) return;
+    parents.forEach(markDirty);
+  };
+
+  const proxy = <T extends object>(target: T): T => {
+    const cached = proxyCache.get(target);
+    if (cached) return cached as T;
+    const proxy = new Proxy(target, createHandler(target));
+    proxyCache.set(target, proxy);
+    return proxy;
+  };
+
+  const createHandler = <T extends object>(target: T): ProxyHandler<T> => {
+    const handler: ProxyHandler<T> = {
+      get: (_, prop) => {
+        const desc = Reflect.getOwnPropertyDescriptor(target, prop);
+        if (desc && !("value" in desc) && !desc.writable && !desc.configurable)
+          return Reflect.get(target, prop);
+        const mutations = mutationCache.get(target);
+        if (!mutations || !(prop in mutations)) {
+          const value = Reflect.get(target, prop);
+          if (!canProxy(value)) return value;
+          const children = childrenCache.get(target) || {};
+          children[prop] = value;
+          childrenCache.set(target, children);
+          const valueParents = parentsCache.get(value) || new Set();
+          valueParents.add(target);
+          parentsCache.set(value, valueParents);
+          return proxy(value);
+        }
+        const [type, value] = mutations[prop]!;
+        return type === "set" ? value : undefined;
+      },
+
+      has: (_, prop) => {
+        const mutations = mutationCache.get(target);
+        if (!mutations || !(prop in mutations)) return prop in target;
+        return mutations[prop]![0] === "set";
+      },
+
+      getOwnPropertyDescriptor: (_, prop) => {
+        const mutations = mutationCache.get(target);
+        if (!mutations || !(prop in mutations))
+          return Reflect.getOwnPropertyDescriptor(target, prop);
+        const [type, value] = mutations[prop]!;
+        if (type === "set") {
+          const desc = Reflect.getOwnPropertyDescriptor(target, prop);
+          if (desc) {
+            desc.value = value as never;
+            return desc;
+          }
+          return { value, enumerable: true, configurable: true };
+        }
+        return undefined;
+      },
+
+      ownKeys: () => {
+        const mutations = mutationCache.get(target);
+        if (!mutations) return Reflect.ownKeys(target);
+        const keys = new Set(Reflect.ownKeys(target));
+        for (const key of Reflect.ownKeys(mutations)) {
+          if (key === DIRTY_SYMBOL) continue;
+          const [type] = mutations[key]!;
+          keys[type === "set" ? "add" : "delete"](key);
+        }
+        return Array.from(keys);
+      },
+
+      set: (_, prop, value) => {
+        const desc = Reflect.getOwnPropertyDescriptor(target, prop);
+        if (desc && !desc.writable && !desc.configurable) return false;
+        const mutations = mutationCache.get(target) || {};
+        const setValue = (value: unknown) => {
+          unlinkCache(target, prop);
+          mutations[prop] = ["set", value];
+          mutationCache.set(target, mutations);
+          markDirty(target);
+          if (!inAction) flushMutations();
+        };
+        const prevMutation = mutations[prop];
+        if (prevMutation) {
+          const [type, prevValue] = prevMutation;
+          if (type === "set" && Object.is(prevValue, value)) return true;
+          setValue(value);
+          return true;
+        }
+        if (desc && !("value" in desc)) {
+          if (!("set" in desc)) return true;
+          desc.set!.call(handler, value);
+          return true;
+        }
+        if (desc && desc.value === value) return true;
+        setValue(value);
+        return true;
+      },
+
+      deleteProperty: (_, prop) => {
+        const desc = Reflect.getOwnPropertyDescriptor(target, prop);
+        if (desc && !desc.configurable) return false;
+        const mutations = mutationCache.get(target) || {};
+        const prevMutation = mutations[prop];
+        if (!desc || (prevMutation && prevMutation[0] === "del")) return true;
+        unlinkCache(target, prop);
+        mutationCache.set(target, mutations);
+        markDirty(target);
+        mutations[prop] = ["del"];
+        if (!inAction) flushMutations();
+        return true;
+      },
+    };
+    return handler;
+  };
+
   const proxiedStore = new Proxy(store, {
-    get: (target, prop, receiver) => {
-      if (typeof prop === "string" && (helperMethodNames.has(prop) || actionNames.has(prop)))
-        return Reflect.get(target, prop, receiver);
+    get: (_, prop) => {
+      if (prop in store) return store[prop as keyof typeof store];
 
       if (typeof prop === "string" && computedNames.has(prop)) {
         const cache = computedCache.get(prop);
-        const state = _draft ? (current(_draft) as State) : _state;
+        const state = getFlushed();
         if (
           cache &&
           !isChanged(cache.state, state, cache.affected, new WeakMap(), isOriginalEqual)
         ) {
-          touchAffected(state, cache.state, cache.affected);
-          return cache.cachedResult;
+          // Touch proxied state to create potential uncreated proxies
+          touchAffected(proxy(state), cache.state, cache.affected);
+          return canProxy(cache.cachedResult) ? proxy(cache.cachedResult) : cache.cachedResult;
         }
         const affected: Affected = new WeakMap();
-        const proxy = createProxy(state, affected, undefined, targetCache);
-        activeStateProxies.push(proxy);
-        const thisArg = getComputedThis(_computedState, proxy);
-        const value = untrack(computed[prop as keyof Computed]!.call(thisArg));
+        const proxyToCompare = createProxyToCompare(state, affected, undefined, targetCache);
+        activeStateProxies.push(proxyToCompare);
+        const thisArg = getComputedThis(_computedState, proxyToCompare);
+        const value = untrack(computed[prop as keyof Computed].call(thisArg));
         activeStateProxies.pop();
-        touchAffected(state, state, affected);
+        // Touch proxied state to create potential uncreated proxies
+        touchAffected(proxy(state), state, affected);
         computedCache.set(prop, { state, affected, cachedResult: value });
-        return value;
+        return canProxy(value) ? proxy(value) : value;
       }
 
-      if (_draft) return Reflect.get(_draft, prop, receiver);
-
-      let result: any;
-      setState(
-        produce(_state, (draft) => {
-          _draft = draft;
-          try {
-            result = undraft(Reflect.get(draft, prop, receiver));
-          } finally {
-            _draft = null;
-          }
-        }),
-      );
-      return result;
+      return proxy(_state)[prop as keyof State];
     },
 
-    set: (_, prop, value, receiver) => {
-      if (_draft) return Reflect.set(_draft, prop, value, receiver);
+    has: (_, prop) => {
+      if (prop in store) return true;
+      if (typeof prop === "string" && computedNames.has(prop)) return true;
+      if (mutationCache.has(_state)) return prop in proxy(_state);
+      return prop in _state;
+    },
 
-      let success = false;
-      setState(
-        produce(_state, (draft) => {
-          _draft = draft;
-          success = Reflect.set(draft, prop, value, receiver);
-          _draft = null;
-        }),
+    getOwnPropertyDescriptor: (_, prop) => {
+      if (prop in store) return Reflect.getOwnPropertyDescriptor(store, prop);
+      if (typeof prop === "string" && computedNames.has(prop))
+        return Reflect.getOwnPropertyDescriptor(_computedState, prop);
+      if (mutationCache.has(_state)) return Reflect.getOwnPropertyDescriptor(proxy(_state), prop);
+      return Reflect.getOwnPropertyDescriptor(_state, prop);
+    },
+
+    ownKeys: () => {
+      const keys = Array.from(helperMethodNames);
+      Array.prototype.push.apply(
+        keys,
+        Reflect.ownKeys(mutationCache.has(_state) ? proxy(_state) : _state),
       );
-      return success;
+      Array.prototype.push.apply(keys, Array.from(computedNames));
+      Array.prototype.push.apply(keys, Array.from(actionNames));
+      return keys;
+    },
+
+    set: (_, prop, value) => {
+      if (prop in store || (typeof prop === "string" && computedNames.has(prop))) return false;
+      return Reflect.set(proxy(_state), prop, value);
     },
 
     deleteProperty: (_, prop) => {
-      if (_draft) return Reflect.deleteProperty(_draft, prop);
-
-      let success = false;
-      setState(
-        produce(_state, (draft) => {
-          _draft = draft;
-          success = Reflect.deleteProperty(draft, prop);
-          _draft = null;
-        }),
-      );
-      return success;
+      if (prop in store || (typeof prop === "string" && computedNames.has(prop))) return false;
+      return Reflect.deleteProperty(proxy(_state), prop);
     },
   });
 
   for (const key in actions) {
-    const handler = actions[key]!;
-    (store as any)[key] = renameFunction((...args: never) => {
-      if (_draft) return handler.apply(proxiedStore, args);
-      let result: any;
-      setState(
-        produce(_state, (draft) => {
-          _draft = draft;
-          try {
-            result = undraft(handler.apply(proxiedStore, args));
-          } finally {
-            _draft = null;
-          }
-        }),
-      );
-      return result;
-    }, key);
+    const handler = actions[key];
+    (store as any)[key] = renameFunction((...args: never) => act(handler, args), key);
   }
 
-  Object.freeze(store);
+  readonly(store, false);
   return proxiedStore as any;
 }
 
 /*********
  * Slice *
  *********/
+export const getterNamePrefix = "troza/getter:";
+export type GetterNamePrefix = typeof getterNamePrefix;
+
 /**
- * A slice of a {@linkcode Store}.
+ * Create a getter name.
+ * @param name The name of the getter.
+ * @returns
  */
-export type Slice<
-  State extends object,
-  Computed extends ComputedOptions,
-  Actions extends Record<string, (...args: never) => unknown>,
-> = State & {
-  computed?: Computed;
-  actions?: Actions;
+export function get<Name extends string>(name: Name): GetterName<Name> {
+  return `${getterNamePrefix}${name}`;
+}
+export type GetterName<Name extends string = string> = `${GetterNamePrefix}${Name}`;
+
+/**
+ * Force TypeScript to evaluate {@linkcode T} eagerly.
+ *
+ * This is just used to make type information more readable on hover.
+ */
+type Prettify<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
+type PrettifyReadonly<T> = T extends infer U ? { readonly [K in keyof U]: U[K] } : never;
+
+export type ExtractSliceState<Slice extends object> = {
+  [K in keyof Slice as K extends GetterName ? never
+  : Slice[K] extends (...args: never) => any ? never
+  : K]: Slice[K];
+};
+export type ExtractSliceComputed<Slice extends object> = {
+  readonly [K in keyof Slice as K extends GetterName<infer Name> ?
+    Slice[K] extends () => any ?
+      Name
+    : never // Filter out invalid getters
+  : never]: Slice[K] extends (...args: never) => infer R ? R
+  : // This should never happen, as we already filtered out invalid getters in name
+    never;
+};
+export type ExtractSliceActions<Slice extends object> = {
+  readonly [K in keyof Slice as K extends GetterName ? never
+  : Slice[K] extends (...args: never) => any ? K
+  : never]: Slice[K] extends (...args: never) => any ? Slice[K] : never;
 };
 
 /**
@@ -618,127 +810,42 @@ export type Slice<
  *
  * @example
  * ```typescript
- * import { createSlice, createStore, withSlices } from "troza";
+ * import { create, get, slice } from "troza";
  *
- * const counterSlice = createSlice({
+ * const counterSlice = slice({
  *   count: 0,
- *   computed: {
- *     doubleCount() {
- *       return this.count * 2;
- *     },
+ *   [get("doubleCount")]() {
+ *     return this.count * 2;
  *   },
- *   actions: {
- *     inc() {
- *       this.count++;
- *     },
+ *   inc() {
+ *     this.count++;
  *   },
  * });
  *
- * const nameSlice = createSlice({
+ * const nameSlice = slice({
  *   name: "John Doe",
- *   actions: {
- *     changeName(name: string) {
- *       this.name = name;
- *     },
+ *   changeName(name: string) {
+ *     this.name = name;
  *   },
  * });
  *
- * const store = createStore(withSlices(counterSlice, nameSlice));
+ * const store = create({ ...counterSlice, ...nameSlice });
  * ```
- *
- * @see {@linkcode withSlices}
  */
-export function createSlice<
-  State extends object,
-  Computed extends ComputedOptions = {},
-  Actions extends Record<string, (...args: never) => unknown> = {},
->(
-  slice: State & {
-    computed?: Computed &
-      ThisType<
-        ReadonlyStoreBase<Prettify<Omit<State, "computed" | "actions">>, Computed> &
-          Prettify<
-            Readonly<
-              Omit<State, "computed" | "actions"> &
-                ExtractComputedReturns<Computed> & {
-                  [K in keyof Actions]: Actions[K];
-                }
-            >
-          >
-      >;
-    actions?: Actions &
-      ThisType<
-        StoreBase<Prettify<Omit<State, "computed" | "actions">>, Computed> &
-          Prettify<
-            Omit<State, "computed" | "actions"> &
-              ExtractComputedReturns<Computed> & {
-                readonly [K in keyof Actions]: Actions[K];
-              }
-          >
-      >;
-  },
-): Prettify<
-  State &
-    ([keyof Computed] extends [never] ? {} : { computed: Computed }) &
-    ([keyof Actions] extends [never] ? {} : { actions: Actions })
-> {
-  return slice as any;
-}
-
-type MergeSlices<Slices> =
-  _MergeSlices<Slices> extends (
-    {
-      state: infer State;
-      computed: infer Computed;
-      actions: infer Actions;
-    }
-  ) ?
-    Prettify<
-      State &
-        ([keyof Computed] extends [never] ? {} : { computed: Computed }) &
-        ([keyof Actions] extends [never] ? {} : { actions: Actions })
-    >
-  : never;
-type _MergeSlices<
-  Slices,
-  Acc extends {
-    state: object;
-    computed: ComputedOptions;
-    actions: Record<string, (...args: never) => unknown>;
-  } = { state: {}; computed: {}; actions: {} },
-> =
-  Slices extends [infer S, ...infer Rest] ?
-    _MergeSlices<
-      Rest,
-      {
-        state: Prettify<Acc["state"] & Omit<S, "computed" | "actions">>;
-        computed: Prettify<Acc["computed"] & ("computed" extends keyof S ? S["computed"] : {})>;
-        actions: Prettify<Acc["actions"] & ("actions" extends keyof S ? S["actions"] : {})>;
-      }
-    >
-  : Acc;
-
-/**
- * Merge multiple slices into a single slice.
- * @param slices The slices to merge.
- * @returns
- *
- * @see {@linkcode createSlice} for how to create and use slices.
- */
-export function withSlices<Slices extends Slice<any, any, any>[]>(
-  ...slices: Slices
-): MergeSlices<Slices> {
-  const state = {};
-  const computed = {};
-  const actions = {};
-
-  for (const slice of slices) {
-    Object.assign(state, slice);
-    Object.assign(computed, slice.computed);
-    Object.assign(actions, slice.actions);
-  }
-
-  return { ...state, computed, actions } as any;
+export function slice<Slice extends object>(
+  slice: Slice &
+    ThisType<
+      StoreBase<
+        Prettify<ExtractSliceState<Slice>>,
+        Prettify<ExtractSliceComputed<Slice>>,
+        Prettify<ExtractSliceActions<Slice>>
+      > &
+        Prettify<
+          ExtractSliceState<Slice> & ExtractSliceComputed<Slice> & ExtractSliceActions<Slice>
+        >
+    >,
+): Slice {
+  return slice;
 }
 
 /**********************
@@ -757,29 +864,38 @@ const renameFunction = <F extends (...args: never) => unknown>(fn: F, name: stri
     configurable: true,
   });
 
-/* Immer */
-const immer = new Immer();
-immer.setAutoFreeze(false); // Enable nested proxies for proxy-compare
-const { produce } = immer;
+const DIRTY_SYMBOL = Symbol();
+
+const canProxy = (x: unknown): x is object =>
+  x !== null &&
+  typeof x === "object" &&
+  (Array.isArray(x) || (!(Symbol.iterator in x) && Object.getPrototypeOf(x) === Object.prototype));
 
 /**
- * Undraft a (possibly) immer draft deeply.
- * @param value The value to undraft.
- * @param seen A weak set to keep track of visited objects to avoid circular references.
- * @returns The undrafted value.
+ * Make an object readonly, but allowing for configuration.
+ *
+ * Inspired by Valtio: https://github.com/pmndrs/valtio/blob/75097c8fb2dd8080123808adc2ad11f0a6f7fc82/src/vanilla.ts#L70-L102
+ * @private
+ * @param target The object to clone.
+ * @param deep Whether to clone deeply.
+ * @param preventExtensions Whether to prevent extensions.
+ * @param visited A weak map to handle circular references.
+ * @returns The target itself.
  */
-export const undraft = <T>(value: T, seen: WeakSet<object> = new WeakSet()): T => {
-  if (!isObject(value)) return value;
-  if (isDraft(value)) return current(value);
-  seen.add(value);
-  for (const key of Reflect.ownKeys(value)) {
-    const descriptor = Reflect.getOwnPropertyDescriptor(value, key)!;
-    if (!descriptor.enumerable || !descriptor.value) continue;
-    const v: any = descriptor.value;
-    if (seen.has(v)) continue;
-    value[key as keyof T] = undraft(v, seen);
+const readonly = <T>(target: T, deep: boolean, visited = new WeakSet()): T => {
+  if (!canProxy(target)) return target;
+  // Handle circular references
+  if (visited.has(target)) return target;
+  visited.add(target);
+  for (const key of Reflect.ownKeys(target)) {
+    const desc = Reflect.getOwnPropertyDescriptor(target, key)!;
+    if (!desc.configurable) continue;
+    if (deep && desc.value && canProxy(desc.value)) readonly(desc.value, true, visited);
+    if (!desc.writable) continue;
+    desc.writable = false;
+    Object.defineProperty(target, key, desc);
   }
-  return value;
+  return target;
 };
 
 /* Auto-tracked memoization */
@@ -807,9 +923,9 @@ export function memoizeSelector<State extends object, R>(fn: (state: State) => R
       }
     }
     const affected: Affected = new WeakMap();
-    const proxy = createProxy(state, affected, undefined, targetCache);
+    const proxy = createProxyToCompare(state, affected, undefined, targetCache);
     activeStateProxies.push(proxy);
-    const result = untrack(fn(proxy), new WeakSet());
+    const result = untrack(fn(proxy));
     activeStateProxies.pop();
     touchAffected(state, state, affected);
     cache = { state, affected, cachedResult: result };
@@ -848,11 +964,12 @@ const isObject = (x: unknown): x is object => typeof x === "object" && x !== nul
 
 /**
  * Untrack a proxy object in [proxy-compare](https://github.com/dai-shi/proxy-compare).
+ * @private
  * @param value The value to untrack.
  * @param seen A weak set to keep track of visited objects to avoid circular references.
  * @returns The untracked value.
  */
-export const untrack = <T>(x: T, seen: WeakSet<object> = new WeakSet()): T => {
+const untrack = <T>(x: T, seen: WeakSet<object> = new WeakSet()): T => {
   if (!isObject(x)) return x;
   const untrackedObj = getUntracked(x);
   if (untrackedObj) {
@@ -879,16 +996,11 @@ const touchAffected = (dst: unknown, src: unknown, affected: Affected) => {
     if (trackMemoUntrackedObjSet.has(untrackedObj as never)) trackMemo(dst);
     return;
   }
-  used[HAS_KEY_PROPERTY]?.forEach((key) => {
-    Reflect.has(dst, key);
-  });
+  for (const key of used[HAS_KEY_PROPERTY] || []) Reflect.has(dst, key);
   if (used[ALL_OWN_KEYS_PROPERTY] === true) Reflect.ownKeys(dst);
-  used[HAS_OWN_KEY_PROPERTY]?.forEach((key) => {
-    Reflect.getOwnPropertyDescriptor(dst, key);
-  });
-  used[KEYS_PROPERTY]?.forEach((key) => {
+  for (const key of used[HAS_OWN_KEY_PROPERTY] || []) Reflect.getOwnPropertyDescriptor(dst, key);
+  for (const key of used[KEYS_PROPERTY] || [])
     touchAffected(dst[key as keyof typeof dst], src[key as keyof typeof src], affected);
-  });
 };
 
 const isOriginalEqual = (x: unknown, y: unknown): boolean => {

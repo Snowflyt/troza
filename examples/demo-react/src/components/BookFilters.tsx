@@ -4,12 +4,7 @@ import bookStore, { useBookStore } from "../stores/book";
 const { setSearchTerm, toggleGenreFilter, setYearRange } = bookStore;
 
 const BookFilters: React.FC = () => {
-  // Selectors are memoized depending on their dependencies, so you can
-  // directly select multiple states without worrying about unnecessary rerenders
-  const { filters, availableGenres } = useBookStore((state) => ({
-    filters: state.filters,
-    availableGenres: state.availableGenres,
-  }));
+  const { filters, availableGenres } = useBookStore();
 
   return (
     <div className="rounded-lg bg-white p-4 shadow">

@@ -4,8 +4,8 @@ import bookStore, { useBookStore } from "../stores/book";
 const { borrowBook, toggleReadingList } = bookStore;
 
 const RecommendationPanel: React.FC = () => {
-  // Selectors are memoized depending on their dependencies, so you can
-  // directly select multiple states without worrying about unnecessary rerenders
+  // You can use an optional Zustand-like selector if you prefer
+  // specifying dependencies manually rather than automatically
   const [recommendedBooks, favoriteGenres, readingList] = useBookStore((state) => [
     state.recommendedBooks,
     state.user.favoriteGenres,

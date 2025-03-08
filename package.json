@@ -1,6 +1,6 @@
 {
   "name": "troza",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Intuitive state management for React and Vanilla, easier than ever.",
   "keywords": [
@@ -44,7 +44,6 @@
     "test:watch-cov": "vitest --environment happy-dom --coverage --coverage.reporter=text --coverage.reporter=lcov --coverage.include \"src/**/*.ts\""
   },
   "dependencies": {
-    "immer": "^10",
     "proxy-compare": "^3.0.1"
   },
   "devDependencies": {

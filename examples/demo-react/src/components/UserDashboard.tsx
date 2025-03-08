@@ -4,13 +4,7 @@ import bookStore, { useBookStore } from "../stores/book";
 const { returnBook, toggleReadingList, updateFavoriteGenres } = bookStore;
 
 const UserDashboard: React.FC = () => {
-  // Selectors are memoized depending on their dependencies, so you can
-  // directly select multiple states without worrying about unnecessary rerenders
-  const [user, borrowingStats, availableGenres] = useBookStore((state) => [
-    state.user,
-    state.borrowingStats,
-    state.availableGenres,
-  ]);
+  const { user, borrowingStats, availableGenres } = useBookStore();
 
   // Filter books to get the ones borrowed by user and in reading list
   // Dependencies are also automatically tracked here to avoid unnecessary rerenders

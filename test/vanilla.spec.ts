@@ -1,11 +1,10 @@
-import { isDraft } from "immer";
 import { describe, expect, test, vi } from "vitest";
 
-import { createSlice, createStore, withSlices } from "../src";
+import { create, get, slice } from "../src";
 
 describe("Basic State Management", () => {
   test("store should initialize with the provided state", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
       text: "hello",
     });
@@ -15,7 +14,7 @@ describe("Basic State Management", () => {
   });
 
   test("$set should update the state", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -28,7 +27,7 @@ describe("Basic State Management", () => {
   });
 
   test("$patch should update the state with partial changes", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
       text: "hello",
       nested: { value: 10 },
@@ -45,34 +44,72 @@ describe("Basic State Management", () => {
     expect(store.$get().nested.value).toBe(20);
   });
 
-  test("$update should update the state using immer", () => {
-    const store = createStore({
+  test("$update should update the state with mutable-style updates", () => {
+    const store = create({
       count: 0,
       nested: { value: 10 },
     });
 
-    store.$update((draft) => {
-      draft.count += 1;
-      draft.nested.value *= 2;
+    store.$update((state) => {
+      state.count += 1;
+      state.nested.value *= 2;
     });
 
     expect(store.$get().count).toBe(1);
     expect(store.$get().nested.value).toBe(20);
   });
 
+  test("$act should execute an action with the proper this context", () => {
+    const store = create({
+      count: 0,
+      name: "test",
+    });
+
+    store.$act(function (this: any) {
+      this.count = 5;
+      this.name = "updated";
+    });
+
+    expect(store.$get().count).toBe(5);
+    expect(store.$get().name).toBe("updated");
+  });
+
+  test("$act should pass arguments to the action", () => {
+    const store = create({
+      count: 0,
+    });
+
+    store.$act(
+      function (this: any, amount: number) {
+        this.count += amount;
+      },
+      [10],
+    );
+
+    expect(store.$get().count).toBe(10);
+  });
+
+  test("$act should return the result of the action", () => {
+    const store = create({
+      count: 5,
+    });
+
+    const result = store.$act(function (this: any) {
+      return this.count;
+    });
+
+    expect(result).toBe(5);
+  });
+
   test("store object should allow direct access to state and computed properties", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
       text: "hello",
-      computed: {
-        doubled() {
-          return this.count * 2;
-        },
+      [get("doubled")]() {
+        return this.count * 2;
       },
-      actions: {
-        increment() {
-          this.count += 1;
-        },
+      increment() {
+        this.count += 1;
       },
     });
 
@@ -110,15 +147,13 @@ describe("Basic State Management", () => {
 
 describe("Computed States", () => {
   test("computed states should be calculated based on state", () => {
-    const store = createStore({
+    const store = create({
       count: 5,
-      computed: {
-        doubled() {
-          return this.count * 2;
-        },
-        tripled() {
-          return this.count * 3;
-        },
+      [get("doubled")]() {
+        return this.count * 2;
+      },
+      [get("tripled")]() {
+        return this.count * 3;
       },
     });
 
@@ -135,13 +170,11 @@ describe("Computed States", () => {
       return this.count * 3;
     });
 
-    const store = createStore({
+    const store = create({
       count: 5,
       name: "test",
-      computed: {
-        doubled: doubleSpy,
-        tripled: tripleSpy,
-      },
+      [get("doubled")]: doubleSpy,
+      [get("tripled")]: tripleSpy,
     });
 
     // First access should calculate
@@ -176,15 +209,13 @@ describe("Computed States", () => {
   });
 
   test("computed states can depend on other computed states", () => {
-    const store = createStore({
+    const store = create({
       count: 2,
-      computed: {
-        doubled() {
-          return this.count * 2;
-        },
-        quadrupled() {
-          return this.doubled * 2;
-        },
+      [get("doubled")]() {
+        return this.count * 2;
+      },
+      [get("quadrupled")]() {
+        return this.doubled * 2;
       },
     });
 
@@ -238,7 +269,7 @@ describe("Computed States", () => {
       };
     });
 
-    const store = createStore({
+    const store = create({
       items: [
         { id: 1, name: "Item A", value: 10, active: true },
         { id: 2, name: "Item B", value: 20, active: true },
@@ -247,16 +278,13 @@ describe("Computed States", () => {
       ],
       multiplier: 2,
       minimumAverage: 25,
-      computed: {
-        // First level: Filter and transform items
-        filteredItems: filteredItemsSpy,
 
-        // Second level: Calculate statistics based on filtered items
-        stats: statsSpy,
-
-        // Third level: Generate report based on statistics
-        report: reportSpy,
-      },
+      // First level: Filter and transform items
+      [get("filteredItems")]: filteredItemsSpy,
+      // Second level: Calculate statistics based on filtered items
+      [get("stats")]: statsSpy,
+      // Third level: Generate report based on statistics
+      [get("report")]: reportSpy,
     });
 
     // Initial computation
@@ -286,9 +314,7 @@ describe("Computed States", () => {
     expect(reportSpy).toHaveBeenCalledTimes(1);
 
     // Change base state: update value of an item
-    store.$update((draft) => {
-      draft.items[0]!.value = 5; // Change Item A from 10 to 5
-    });
+    store.items[0]!.value = 5; // Change Item A from 10 to 5
 
     // All levels of computed should recalculate
     const state3 = store.$get();
@@ -303,9 +329,7 @@ describe("Computed States", () => {
     expect(reportSpy).toHaveBeenCalledTimes(2);
 
     // Change multiplier (affects filteredItems but not base items)
-    store.$update((draft) => {
-      draft.multiplier = 3;
-    });
+    store.$patch({ multiplier: 3 });
 
     // All levels should recalculate again
     const state4 = store.$get();
@@ -320,8 +344,8 @@ describe("Computed States", () => {
     expect(reportSpy).toHaveBeenCalledTimes(3);
 
     // Change minimumAverage (only affects the third level computed)
-    store.$update((draft) => {
-      draft.minimumAverage = 70; // Above our current average
+    store.$patch({
+      minimumAverage: 70, // Above our current average
     });
 
     // Only the report should recalculate
@@ -340,9 +364,7 @@ describe("Computed States", () => {
     expect(state5.report.isValid).toBe(false);
 
     // Change active state (affects first level filtered items)
-    store.$update((draft) => {
-      draft.items[2]!.active = true; // Make Item C active
-    });
+    store.items[2]!.active = true; // Make Item C active
 
     // All levels should recalculate
     const state6 = store.$get();
@@ -369,7 +391,7 @@ describe("Computed States", () => {
       };
     });
 
-    const store = createStore({
+    const store = create({
       name: "test",
       data: {
         items: [
@@ -377,9 +399,7 @@ describe("Computed States", () => {
           { id: 2, value: 20 },
         ],
       },
-      computed: {
-        processedData: deepComputedSpy,
-      },
+      [get("processedData")]: deepComputedSpy,
     });
 
     // First get - should not compute
@@ -406,9 +426,7 @@ describe("Computed States", () => {
     expect(deepComputedSpy).toHaveBeenCalledTimes(1);
 
     // Now modify state
-    store.$update((draft) => {
-      draft.data.items[0]!.value = 15;
-    });
+    store.data.items[0]!.value = 15;
 
     // Get again - should recompute
     const state4 = store.$get();
@@ -426,11 +444,9 @@ describe("Computed States", () => {
       };
     });
 
-    const store = createStore({
+    const store = create({
       numbers: [1, 2, 3, 4],
-      computed: {
-        stats: objectSpy,
-      },
+      [get("stats")]: objectSpy,
     });
 
     // First access
@@ -445,9 +461,7 @@ describe("Computed States", () => {
     expect(objectSpy).toHaveBeenCalledTimes(1);
 
     // Update dependency
-    store.$update((draft) => {
-      draft.numbers.push(5);
-    });
+    store.numbers.push(5);
 
     // Should recalculate
     expect(store.$get().stats.sum).toBe(15);
@@ -456,7 +470,7 @@ describe("Computed States", () => {
     expect(objectSpy).toHaveBeenCalledTimes(2);
   });
 
-  test("untrack properly handles nested dependencies in computed properties", () => {
+  test("untrack properly handles nested dependencies in computed states", () => {
     const nestedSpy = vi.fn().mockImplementation(function (this: any) {
       // Deep access of nested properties to test tracking
       const total = this.users
@@ -471,7 +485,7 @@ describe("Computed States", () => {
       };
     });
 
-    const store = createStore({
+    const store = create({
       users: [
         {
           id: 1,
@@ -489,9 +503,7 @@ describe("Computed States", () => {
           orders: [{ id: 201, amount: 20 }],
         },
       ],
-      computed: {
-        summary: nestedSpy,
-      },
+      [get("summary")]: nestedSpy,
     });
 
     // First access
@@ -501,31 +513,25 @@ describe("Computed States", () => {
     expect(nestedSpy).toHaveBeenCalledTimes(1);
 
     // Modify a deeply nested property
-    store.$update((draft) => {
-      draft.users[0]!.orders[0]!.amount = 60;
-    });
+    store.users[0]!.orders[0]!.amount = 60;
 
     // Should recalculate due to dependency change
     expect(store.$get().summary.total).toBe(110);
     expect(nestedSpy).toHaveBeenCalledTimes(2);
 
     // Modify an unrelated property
-    store.$update((draft) => {
-      draft.users[0]!.name = "Updated User 1";
-    });
+    store.users[0]!.name = "Updated User 1";
 
     // Should not recalculate since name isn't tracked
     expect(store.$get().summary.total).toBe(110);
     expect(nestedSpy).toHaveBeenCalledTimes(2);
 
     // Add a new user (changes structure)
-    store.$update((draft) => {
-      draft.users.push({
-        id: 3,
-        name: "User 3",
-        inactive: false,
-        orders: [{ id: 301, amount: 40 }],
-      });
+    store.users.push({
+      id: 3,
+      name: "User 3",
+      inactive: false,
+      orders: [{ id: 301, amount: 40 }],
     });
 
     // Should recalculate
@@ -548,15 +554,13 @@ describe("Computed States", () => {
       return { filtered, mapped, reduced, length };
     });
 
-    const store = createStore({
+    const store = create({
       items: [
         { id: 1, value: 5 },
         { id: 2, value: 15 },
         { id: 3, value: 20 },
       ],
-      computed: {
-        processedData: arraySpy,
-      },
+      [get("processedData")]: arraySpy,
     });
 
     // First access
@@ -567,9 +571,7 @@ describe("Computed States", () => {
     expect(arraySpy).toHaveBeenCalledTimes(1);
 
     // Update array item
-    store.$update((draft) => {
-      draft.items[0]!.value = 12;
-    });
+    store.items[0]!.value = 12;
 
     // Should recalculate
     expect(store.$get().processedData.filtered).toHaveLength(3);
@@ -577,9 +579,7 @@ describe("Computed States", () => {
     expect(arraySpy).toHaveBeenCalledTimes(2);
 
     // Change array length by removing item
-    store.$update((draft) => {
-      draft.items.pop();
-    });
+    store.items.pop();
 
     // Should recalculate due to structural change
     expect(store.$get().processedData.filtered).toHaveLength(2);
@@ -587,17 +587,15 @@ describe("Computed States", () => {
     expect(arraySpy).toHaveBeenCalledTimes(3);
   });
 
-  test("Reflect.ownKeys is tracked in computed properties", () => {
+  test("Reflect.ownKeys is tracked in computed states", () => {
     const ownKeysSpy = vi.fn().mockImplementation(function (this: any) {
       // Use Object.keys() which triggers Reflect.ownKeys tracking
       return Object.keys(this.config).length;
     });
 
-    const store = createStore({
+    const store = create({
       config: { a: 1, b: 2, c: 3 },
-      computed: {
-        configSize: ownKeysSpy,
-      },
+      [get("configSize")]: ownKeysSpy,
     });
 
     // First access should compute
@@ -609,39 +607,33 @@ describe("Computed States", () => {
     expect(ownKeysSpy).toHaveBeenCalledTimes(1);
 
     // Adding a new key should invalidate cache because we tracked ownKeys
-    store.$update((draft) => {
-      (draft.config as any).d = 4;
-    });
+    (store.config as any).d = 4;
 
     // Should recompute
     expect(store.$get().configSize).toBe(4);
     expect(ownKeysSpy).toHaveBeenCalledTimes(2);
 
     // Changing a value but not keys shouldn't invalidate
-    store.$update((draft) => {
-      draft.config.a = 10;
-    });
+    store.config.a = 10;
 
     // Should use cache
     expect(store.$get().configSize).toBe(4);
     expect(ownKeysSpy).toHaveBeenCalledTimes(2);
   });
 
-  test("Reflect.has (in operator) is tracked in computed properties", () => {
+  test("Reflect.has (in operator) is tracked in computed states", () => {
     const hasPropSpy = vi.fn().mockImplementation(function (this: any) {
       // Use 'in' operator which triggers Reflect.has tracking
       return "admin" in this.user.roles;
     });
 
-    const store = createStore({
+    const store = create({
       user: {
         roles: {
           user: true,
         },
       },
-      computed: {
-        isAdmin: hasPropSpy,
-      },
+      [get("isAdmin")]: hasPropSpy,
     });
 
     // First access
@@ -653,18 +645,14 @@ describe("Computed States", () => {
     expect(hasPropSpy).toHaveBeenCalledTimes(1);
 
     // Adding the tracked property should invalidate cache
-    store.$update((draft) => {
-      (draft.user.roles as any).admin = true;
-    });
+    (store.user.roles as any).admin = true;
 
     // Should recompute
     expect(store.$get().isAdmin).toBe(true);
     expect(hasPropSpy).toHaveBeenCalledTimes(2);
 
     // Changing unrelated property shouldn't invalidate
-    store.$update((draft) => {
-      (draft.user.roles as any).superuser = true;
-    });
+    (store.user.roles as any).superuser = false;
 
     // Should use cache
     expect(store.$get().isAdmin).toBe(true);
@@ -692,7 +680,7 @@ describe("Computed States", () => {
       return result;
     });
 
-    const store = createStore({
+    const store = create({
       inventory: {
         electronics: [
           { id: 1, name: "Laptop", price: 1000 },
@@ -703,9 +691,7 @@ describe("Computed States", () => {
           { id: 4, name: "Chair", price: 200 },
         ],
       },
-      computed: {
-        inventoryStats: nestedComputedFn,
-      },
+      [get("inventoryStats")]: nestedComputedFn,
     });
 
     // First access
@@ -718,18 +704,14 @@ describe("Computed States", () => {
     expect(nestedComputedFn).toHaveBeenCalledTimes(1);
 
     // Update a nested property
-    store.$update((draft) => {
-      draft.inventory.electronics[0]!.price = 1200;
-    });
+    store.inventory.electronics[0]!.price = 1200;
 
     // Should recompute
     expect(store.$get().inventoryStats.total).toBe(2500);
     expect(nestedComputedFn).toHaveBeenCalledTimes(2);
 
     // Add a new category
-    store.$update((draft) => {
-      (draft.inventory as any).appliances = [{ id: 5, name: "Fridge", price: 1500 }];
-    });
+    (store.inventory as any).appliances = [{ id: 5, name: "Fridge", price: 1500 }];
 
     // Should recompute because structure changed
     expect(store.$get().inventoryStats.total).toBe(4000);
@@ -737,9 +719,7 @@ describe("Computed States", () => {
     expect(nestedComputedFn).toHaveBeenCalledTimes(3);
 
     // Add a non-priced item (shouldn't affect total)
-    store.$update((draft) => {
-      draft.inventory.furniture.push({ id: 6, name: "Bookshelf" } as any);
-    });
+    store.inventory.furniture.push({ id: 6, name: "Bookshelf" } as never);
 
     // Should recompute (structure changed) but values remain as expected
     expect(store.$get().inventoryStats.total).toBe(4000);
@@ -747,7 +727,7 @@ describe("Computed States", () => {
     expect(nestedComputedFn).toHaveBeenCalledTimes(4);
   });
 
-  test("multiple computeds with overlapping dependencies are properly tracked", () => {
+  test("multiple computed states with overlapping dependencies are properly tracked", () => {
     const namesSpy = vi.fn().mockImplementation(function (this: any) {
       return Object.keys(this.people);
     });
@@ -760,17 +740,15 @@ describe("Computed States", () => {
       return Object.values(this.people).filter((p) => (p as any).active).length;
     });
 
-    const store = createStore({
+    const store = create({
       people: {
         alice: { id: 1, active: true },
         bob: { id: 2, active: false },
         charlie: { id: 3, active: true },
       },
-      computed: {
-        names: namesSpy,
-        count: countSpy,
-        activeCount: activeSpy,
-      },
+      [get("names")]: namesSpy,
+      [get("count")]: countSpy,
+      [get("activeCount")]: activeSpy,
     });
 
     // First access to each
@@ -782,9 +760,7 @@ describe("Computed States", () => {
     expect(activeSpy).toHaveBeenCalledTimes(1);
 
     // Add a person (affects names and count, not activeCount)
-    store.$update((draft) => {
-      (draft.people as any).dave = { id: 4, active: false };
-    });
+    (store.people as any).dave = { id: 4, active: false };
 
     expect(store.$get().names).toEqual(["alice", "bob", "charlie", "dave"]);
     expect(store.$get().count).toBe(4);
@@ -794,9 +770,7 @@ describe("Computed States", () => {
     expect(activeSpy).toHaveBeenCalledTimes(2); // Also recalculated due to structural change
 
     // Change activity status (affects only activeCount)
-    store.$update((draft) => {
-      draft.people.bob.active = true;
-    });
+    store.people.bob.active = true;
 
     expect(store.$get().names).toEqual(["alice", "bob", "charlie", "dave"]);
     expect(store.$get().count).toBe(4);
@@ -809,26 +783,21 @@ describe("Computed States", () => {
 
 describe("Actions", () => {
   test("actions can modify the state", () => {
-    const store = createStore<
-      { count?: number },
-      {},
-      {
-        increment: () => void;
-        add: (value: number) => void;
-        removeCount: () => void;
-      }
-    >({
+    const store = create<{
+      count?: number;
+      increment: () => void;
+      add: (value: number) => void;
+      removeCount: () => void;
+    }>({
       count: 0,
-      actions: {
-        increment() {
-          if (this.count !== undefined) this.count += 1;
-        },
-        add(value: number) {
-          if (this.count !== undefined) this.count += value;
-        },
-        removeCount() {
-          delete this.count;
-        },
+      increment() {
+        if (this.count !== undefined) this.count += 1;
+      },
+      add(value: number) {
+        if (this.count !== undefined) this.count += value;
+      },
+      removeCount() {
+        delete this.count;
       },
     });
 
@@ -847,19 +816,15 @@ describe("Actions", () => {
       return this.count * 2;
     });
 
-    const store = createStore({
+    const store = create({
       count: 1,
       result: 0,
-      computed: {
-        doubled: computedSpy,
-      },
-      actions: {
-        storeDoubled() {
-          // Simulate accessing twice
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          this.doubled;
-          this.result = this.doubled;
-        },
+      [get("doubled")]: computedSpy,
+      storeDoubled() {
+        // Simulate accessing twice
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        this.doubled;
+        this.result = this.doubled;
       },
     });
 
@@ -869,16 +834,14 @@ describe("Actions", () => {
   });
 
   test("actions can call other actions", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
-      actions: {
-        increment() {
-          this.count += 1;
-        },
-        incrementTwice() {
-          this.increment();
-          this.increment();
-        },
+      increment() {
+        this.count += 1;
+      },
+      incrementTwice() {
+        this.increment();
+        this.increment();
       },
     });
 
@@ -886,95 +849,67 @@ describe("Actions", () => {
     expect(store.$get().count).toBe(2);
   });
 
-  test("actions can return complex objects that are correctly undrafted", () => {
-    interface Task {
-      id: number;
-      title: string;
-      completed: boolean;
-    }
-
-    const store = createStore<
-      { tasks: Task[] },
-      {},
-      {
-        addTask: (title: string) => Task;
-        getTasksInfo: () => {
-          count: number;
-          completedCount: number;
-          activeTasks: Task[];
-        };
-      }
-    >({
+  test("actions can return complex objects that are correctly made readonly", () => {
+    const store = create({
       tasks: [
         { id: 1, title: "Task 1", completed: false },
         { id: 2, title: "Task 2", completed: true },
       ],
-      actions: {
-        addTask(title: string) {
-          const newTask = { id: this.tasks.length + 1, title, completed: false };
-          this.tasks.push(newTask);
-          return newTask; // Should be undrafted
-        },
-        getTasksInfo() {
-          return {
-            count: this.tasks.length,
-            completedCount: this.tasks.filter((t) => t.completed).length,
-            activeTasks: this.tasks.filter((t) => !t.completed),
-          };
-        },
+      addTask(title: string) {
+        const newTask = { id: this.tasks.length + 1, title, completed: false };
+        this.tasks.push(newTask);
+        return newTask; // Should made readonly
+      },
+      getTasksInfo() {
+        return {
+          count: this.tasks.length,
+          completedCount: this.tasks.filter((t) => t.completed).length,
+          activeTasks: this.tasks.filter((t) => !t.completed),
+        };
       },
     });
 
     // Test returning a new created object
     const newTask = store.addTask("Task 3");
     expect(newTask).toEqual({ id: 3, title: "Task 3", completed: false });
-    expect(isDraft(newTask)).toBe(false); // Should be undrafted
+    expect(() => {
+      // Should throw because it’s readonly
+      (newTask as any).title = "Updated";
+    }).toThrow();
 
     // Test returning a complex object with nested arrays
     const info = store.getTasksInfo();
     expect(info.count).toBe(3);
     expect(info.completedCount).toBe(1);
     expect(info.activeTasks).toHaveLength(2);
-    expect(isDraft(info)).toBe(false);
-    expect(isDraft(info.activeTasks)).toBe(false);
-    expect(isDraft(info.activeTasks[0])).toBe(false);
   });
 
-  test("undraft handles circular references correctly", () => {
+  test("`readonly` handles circular references correctly", () => {
     interface Node {
       id: number;
       children: Node[];
       parent?: Node;
     }
 
-    const store = createStore<
-      { root: Node | null },
-      {},
-      {
-        createTree: () => Node;
-        getTree: () => Node | null;
-      }
-    >({
-      root: null,
-      actions: {
-        createTree() {
-          const root: Node = { id: 1, children: [] };
-          const child1: Node = { id: 2, children: [], parent: root };
-          const child2: Node = { id: 3, children: [], parent: root };
+    const store = create({
+      root: null as Node | null,
+      createTree() {
+        const root: Node = { id: 1, children: [] };
+        const child1: Node = { id: 2, children: [], parent: root };
+        const child2: Node = { id: 3, children: [], parent: root };
 
-          root.children.push(child1);
-          root.children.push(child2);
+        root.children.push(child1);
+        root.children.push(child2);
 
-          // Create a circular reference
-          const grandchild: Node = { id: 4, children: [], parent: child1 };
-          child1.children.push(grandchild);
+        // Create a circular reference
+        const grandchild: Node = { id: 4, children: [], parent: child1 };
+        child1.children.push(grandchild);
 
-          this.root = root;
-          return root; // Should handle circular refs
-        },
-        getTree() {
-          return this.root; // Should undraft correctly
-        },
+        this.root = root;
+        return root; // Should handle circular refs
+      },
+      getTree() {
+        return this.root;
       },
     });
 
@@ -988,7 +923,7 @@ describe("Actions", () => {
     // Make sure circular references are handled
     expect(() => JSON.stringify(tree)).toThrow(); // Should throw because of circular refs
 
-    // Get the tree again and verify it's properly undrafted
+    // Get the tree again and verify it's properly handled
     const retrievedTree = store.getTree();
     expect(retrievedTree?.id).toBe(1);
     expect(retrievedTree?.children[0]?.parent).toBe(retrievedTree);
@@ -997,21 +932,19 @@ describe("Actions", () => {
 
 describe("Async Actions", () => {
   test("async actions can update state asynchronously", async () => {
-    const store = createStore<
-      { count: number; loading?: boolean },
-      {},
-      { incrementAsync: (delay?: number) => Promise<number> }
-    >({
+    const store = create<{
+      count: number;
+      loading?: boolean;
+      incrementAsync: (delay?: number) => Promise<number>;
+    }>({
       count: 0,
       loading: false,
-      actions: {
-        async incrementAsync(delay = 10) {
-          this.loading = true;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          this.count += 1;
-          delete this.loading;
-          return this.count;
-        },
+      async incrementAsync(delay = 10) {
+        this.loading = true;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        this.count += 1;
+        delete this.loading;
+        return this.count;
       },
     });
 
@@ -1030,19 +963,15 @@ describe("Async Actions", () => {
       return this.count * 2;
     });
 
-    const store = createStore({
+    const store = create({
       count: 1,
-      computed: {
-        doubled: computedSpy,
-      },
-      actions: {
-        async storeDoubledAsync() {
-          // Simulate accessing twice
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          this.doubled;
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          return this.doubled;
-        },
+      [get("doubled")]: computedSpy,
+      async storeDoubledAsync() {
+        // Simulate accessing twice
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        this.doubled;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return this.doubled;
       },
     });
 
@@ -1057,19 +986,17 @@ describe("Async Actions", () => {
   test("async actions can call other actions", async () => {
     const actionSpy = vi.fn();
 
-    const store = createStore({
+    const store = create({
       count: 0,
-      actions: {
-        increment() {
-          this.count += 1;
-          actionSpy();
-        },
-        async incrementTwiceAsync() {
-          this.increment();
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          this.increment();
-          return this.count;
-        },
+      increment() {
+        this.count += 1;
+        actionSpy();
+      },
+      async incrementTwiceAsync() {
+        this.increment();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        this.increment();
+        return this.count;
       },
     });
 
@@ -1084,14 +1011,12 @@ describe("Async Actions", () => {
   });
 
   test("error in async actions won't corrupt the store", async () => {
-    const store = createStore({
+    const store = create({
       count: 0,
-      actions: {
-        async failingAction() {
-          this.count += 1;
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          throw new Error("Intentional error");
-        },
+      async failingAction() {
+        this.count += 1;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        throw new Error("Intentional error");
       },
     });
 
@@ -1102,7 +1027,7 @@ describe("Async Actions", () => {
 
 describe("Subscriptions", () => {
   test("$subscribe should call the subscriber when state changes", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1117,7 +1042,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe with selector should only call when selected state changes", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
       name: "test",
     });
@@ -1138,7 +1063,7 @@ describe("Subscriptions", () => {
   });
 
   test("unsubscribe should stop the subscriber from being called", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1155,7 +1080,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe should throw TypeError if selector is not a function", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1173,7 +1098,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe should throw TypeError if subscriber is not a function", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1199,7 +1124,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe with only one argument should use it as subscriber", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1221,7 +1146,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe selector can return primitive or complex values", () => {
-    const store = createStore({
+    const store = create({
       user: { name: "John", age: 30 },
       items: [1, 2, 3],
     });
@@ -1239,18 +1164,14 @@ describe("Subscriptions", () => {
     store.$subscribe((state) => state.items, itemsSubscriber);
 
     // Update primitive in nested object
-    store.$update((draft) => {
-      draft.user.age = 31;
-    });
+    store.user.age = 31;
 
     expect(ageSubscriber).toHaveBeenCalledWith(31, 30);
     expect(userSubscriber).toHaveBeenCalledTimes(1);
     expect(itemsSubscriber).not.toHaveBeenCalled();
 
     // Update array
-    store.$update((draft) => {
-      draft.items.push(4);
-    });
+    store.items.push(4);
 
     expect(ageSubscriber).toHaveBeenCalledTimes(1);
     expect(userSubscriber).toHaveBeenCalledTimes(1);
@@ -1258,7 +1179,7 @@ describe("Subscriptions", () => {
   });
 
   test("$subscribe with identical selector results should not trigger callback", () => {
-    const store = createStore({
+    const store = create({
       a: { value: 1 },
       b: { value: 1 },
     });
@@ -1267,25 +1188,19 @@ describe("Subscriptions", () => {
     store.$subscribe((state) => state.a.value, subscriber);
 
     // Update with the same value
-    store.$update((draft) => {
-      draft.a.value = 1;
-    });
+    store.a.value = 1;
 
     // Shouldn't call because value is the same (Object.is comparison)
     expect(subscriber).not.toHaveBeenCalled();
 
     // Update a different property
-    store.$update((draft) => {
-      draft.b.value = 2;
-    });
+    store.b.value = 2;
 
     // Shouldn't call because we're not tracking b.value
     expect(subscriber).not.toHaveBeenCalled();
 
     // Update with different value
-    store.$update((draft) => {
-      draft.a.value = 2;
-    });
+    store.a.value = 2;
 
     // Should call now
     expect(subscriber).toHaveBeenCalledWith(2, 1);
@@ -1294,7 +1209,7 @@ describe("Subscriptions", () => {
 
 describe("Watchers", () => {
   test("$watch should call the watcher when related state changes", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
       name: "test",
     });
@@ -1328,7 +1243,7 @@ describe("Watchers", () => {
   });
 
   test("$watch should throw TypeError if watcher is not a function", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1347,22 +1262,18 @@ describe("Watchers", () => {
 });
 
 describe("Slices", () => {
-  test("createSlice should create a type-safe slice", () => {
-    const counterSlice = createSlice({
+  test("slice should create a type-safe slice", () => {
+    const counterSlice = slice({
       count: 0,
-      computed: {
-        doubled() {
-          return this.count * 2;
-        },
+      [get("doubled")]() {
+        return this.count * 2;
       },
-      actions: {
-        increment() {
-          this.count += 1;
-        },
+      increment() {
+        this.count += 1;
       },
     });
 
-    const store = createStore(counterSlice);
+    const store = create(counterSlice);
 
     expect(store.$get().count).toBe(0);
     expect(store.$get().doubled).toBe(0);
@@ -1372,39 +1283,31 @@ describe("Slices", () => {
     expect(store.$get().doubled).toBe(2);
   });
 
-  test("withSlices should merge multiple slices", () => {
-    const counterSlice = createSlice({
+  test("multiple slices should be merge multiple one slice", () => {
+    const counterSlice = slice({
       count: 0,
-      computed: {
-        doubled() {
-          return this.count * 2;
-        },
+      [get("doubled")]() {
+        return this.count * 2;
       },
-      actions: {
-        increment() {
-          this.count += 1;
-        },
+      increment() {
+        this.count += 1;
       },
     });
 
-    const userSlice = createSlice({
+    const userSlice = slice({
       user: {
         name: "test",
         age: 30,
       },
-      computed: {
-        isAdult() {
-          return this.user.age >= 18;
-        },
+      [get("isAdult")]() {
+        return this.user.age >= 18;
       },
-      actions: {
-        updateName(name: string) {
-          this.user.name = name;
-        },
+      updateName(name: string) {
+        this.user.name = name;
       },
     });
 
-    const mergedStore = createStore(withSlices(counterSlice, userSlice));
+    const mergedStore = create({ ...counterSlice, ...userSlice });
 
     expect(mergedStore.$get().count).toBe(0);
     expect(mergedStore.$get().user.name).toBe("test");
@@ -1420,9 +1323,208 @@ describe("Slices", () => {
   });
 });
 
+describe("readonly functionality", () => {
+  test("basic read-only behavior", () => {
+    // Test that initial state objects are deeply readonly
+    const initialObj = { nested: { value: 10 } };
+    const store = create({
+      obj: initialObj,
+      checkObj() {
+        // Try to modify the original object that was passed to create
+        try {
+          initialObj.nested.value = 20;
+          return "modified";
+        } catch (e) {
+          return "readonly";
+        }
+      },
+    });
+
+    expect(store.checkObj()).toBe("readonly");
+    // The original object shouldn't have been modified
+    expect(initialObj.nested.value).toBe(10);
+  });
+
+  test("circular reference handling", () => {
+    // Create objects with circular references
+    const obj1: any = { name: "obj1" };
+    const obj2 = { name: "obj2", ref: obj1 };
+    obj1.ref = obj2;
+
+    const store = create({
+      circular: obj1,
+      checkCircularReferences() {
+        // Access circular references to ensure they don't cause issues
+        const path1 = this.circular.ref.name;
+        const path2 = this.circular.ref.ref.name;
+        const path3 = this.circular.ref.ref.ref.name;
+        return { path1, path2, path3 };
+      },
+    });
+
+    const result = store.checkCircularReferences();
+    expect(result.path1).toBe("obj2");
+    expect(result.path2).toBe("obj1");
+    expect(result.path3).toBe("obj2");
+  });
+
+  test("array handling", () => {
+    const initialArray = [1, 2, { value: 3 }];
+    const store = create({
+      list: initialArray,
+      modifyInitialArray() {
+        try {
+          // Try modifying the initial array
+          initialArray[0] = 99;
+          (initialArray[2] as any).value = 99;
+          return "modified";
+        } catch (e) {
+          return "readonly";
+        }
+      },
+      modifyStoreArray() {
+        // The store's version should be modifiable during an action
+        this.list = [4, 5, { value: 6 }];
+      },
+    });
+
+    expect(store.modifyInitialArray()).toBe("readonly");
+    expect(initialArray[0]).toBe(1);
+    expect((initialArray[2] as any).value).toBe(3);
+
+    // But we can modify the array through store actions
+    store.modifyStoreArray();
+    expect(store.list).toEqual([4, 5, { value: 6 }]);
+  });
+
+  test("complex nested structure handling", () => {
+    const deepObject = {
+      level1: {
+        value: 10,
+        level2: {
+          value: 20,
+          level3: {
+            value: 30,
+            array: [1, 2, { value: 40 }],
+          },
+        },
+      },
+    };
+
+    const store = create({
+      deep: deepObject,
+      [get("computedValues")]() {
+        return {
+          sum:
+            this.deep.level1.value +
+            this.deep.level1.level2.value +
+            this.deep.level1.level2.level3.value +
+            (this.deep.level1.level2.level3.array[2] as any).value,
+        };
+      },
+      updateDeep() {
+        // Create a deeply modified version
+        this.deep.level1.level2.level3.value = 100;
+        this.deep.level1.level2.level3.array[2] = { value: 200 };
+      },
+    });
+
+    // Test initial computed values
+    expect(store.computedValues.sum).toBe(100); // 10 + 20 + 30 + 40
+
+    // Test that the original object wasn't modified
+    expect(deepObject.level1.level2.level3.value).toBe(30);
+
+    // Update deep and check new values
+    store.updateDeep();
+    expect(store.deep.level1.level2.level3.value).toBe(100);
+    expect((store.deep.level1.level2.level3.array[2] as any).value).toBe(200);
+    expect(store.computedValues.sum).toBe(330); // 10 + 20 + 100 + 200
+
+    // Original object should still be unchanged
+    expect(deepObject.level1.level2.level3.value).toBe(30);
+  });
+
+  test("readonly behavior with Date objects", () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const store = create({
+      dates: {
+        now,
+        tomorrow,
+      },
+      updateDates() {
+        // Date objects should be treated as primitive values, not deeply readonly
+        const nextWeek = new Date(this.dates.now);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+
+        this.dates = {
+          now: nextWeek,
+          tomorrow: this.dates.tomorrow,
+        };
+
+        return {
+          originalNowModifiable: this.tryModifyDate(now),
+          originalTomorrowModifiable: this.tryModifyDate(tomorrow),
+        };
+      },
+      tryModifyDate(date: Date) {
+        const oldValue = date.getTime();
+        try {
+          // Try to modify the date
+          date.setDate(date.getDate() + 1);
+          return date.getTime() !== oldValue;
+        } catch (e) {
+          return false;
+        }
+      },
+    });
+
+    const result = store.updateDates();
+
+    // Original Date objects should remain modifiable since they’re not made deeply readonly
+    expect(result.originalNowModifiable).toBe(true);
+    expect(result.originalTomorrowModifiable).toBe(true);
+
+    // But the store should have updated its internal state
+    expect(store.dates.now.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  test("readonly with TypedArray", () => {
+    const initialArray = new Uint8Array([1, 2, 3, 4]);
+
+    const store = create({
+      typedArray: initialArray,
+      updateArray() {
+        // TypedArrays should be treated like primitives
+        const newArray = new Uint8Array([5, 6, 7, 8]);
+        this.typedArray = newArray;
+      },
+      tryModifyOriginal() {
+        try {
+          initialArray[0] = 99;
+          return initialArray[0] === 99;
+        } catch (e) {
+          return false;
+        }
+      },
+    });
+
+    // Original TypedArray should remain modifiable
+    expect(store.tryModifyOriginal()).toBe(true);
+    expect(initialArray[0]).toBe(99);
+
+    // Store can update its copy
+    store.updateArray();
+    expect(Array.from(store.typedArray)).toEqual([5, 6, 7, 8]);
+  });
+});
+
 describe("Edge Cases", () => {
   test("nested objects should be reactive", () => {
-    const store = createStore({
+    const store = create({
       user: {
         profile: {
           name: "test",
@@ -1431,10 +1533,8 @@ describe("Edge Cases", () => {
           },
         },
       },
-      actions: {
-        updateAge(age: number) {
-          this.user.profile.details.age = age;
-        },
+      updateAge(age: number) {
+        this.user.profile.details.age = age;
       },
     });
 
@@ -1443,15 +1543,13 @@ describe("Edge Cases", () => {
   });
 
   test("arrays should be reactive", () => {
-    const store = createStore({
+    const store = create({
       items: [1, 2, 3],
-      actions: {
-        addItem(item: number) {
-          this.items.push(item);
-        },
-        removeItem(index: number) {
-          this.items.splice(index, 1);
-        },
+      addItem(item: number) {
+        this.items.push(item);
+      },
+      removeItem(index: number) {
+        this.items.splice(index, 1);
       },
     });
 
@@ -1463,7 +1561,7 @@ describe("Edge Cases", () => {
   });
 
   test("state should be immutable between updates", () => {
-    const store = createStore({
+    const store = create({
       count: 0,
     });
 
@@ -1474,5 +1572,281 @@ describe("Edge Cases", () => {
     expect(state1).not.toBe(state2);
     expect(state1.count).toBe(0);
     expect(state2.count).toBe(1);
+  });
+
+  test("deleted properties should return undefined when accessed", () => {
+    const store = create({
+      count: 0,
+      name: "test",
+      [get("doubled")]() {
+        return this.count * 2;
+      },
+      removeProperty(prop: string) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete (this as any)[prop];
+        // Access the deleted property inside the action to test proxied access
+        return {
+          deleted: prop,
+          value: (this as any)[prop],
+          hasProperty: prop in (this as any),
+        };
+      },
+    });
+
+    // Initial state has properties
+    expect(store.count).toBe(0);
+    expect(store.name).toBe("test");
+    expect("count" in store).toBe(true);
+    expect("doubled" in store).toBe(true);
+
+    // Delete a property and check in-action behavior
+    const result = store.removeProperty("count");
+    expect(result.deleted).toBe("count");
+    expect(result.value).toBe(undefined); // Should return undefined for deleted property
+    expect(result.hasProperty).toBe(false); // 'in' operator should return false
+
+    // After action completes, property should remain deleted
+    expect(store.count).toBe(undefined);
+    expect("count" in store).toBe(false);
+    expect(store.$get().count).toBe(undefined);
+
+    // Other properties remain unaffected
+    expect(store.name).toBe("test");
+    expect("name" in store).toBe(true);
+  });
+
+  test("accessor properties should be preserved after multiple state changes", () => {
+    // Define an object with getter/setter
+    let privateValue = 42;
+    const obj = Object.defineProperty({} as { value: number }, "value", {
+      get() {
+        return privateValue;
+      },
+      set(newValue) {
+        privateValue = newValue;
+      },
+      enumerable: true,
+      configurable: true,
+    });
+
+    const store = create({
+      count: 0,
+      obj,
+    });
+
+    // Initial state - getter works
+    expect(store.obj.value).toBe(42);
+
+    // Multiple state changes
+    store.$patch({ count: 1 });
+    store.$patch({ count: 2 });
+    expect(store.count).toBe(2);
+
+    // Getter should still work after state changes
+    expect(store.obj.value).toBe(42);
+
+    // Set through the setter
+    store.obj.value = 100;
+
+    // Private value should be updated
+    expect(privateValue).toBe(100);
+
+    // Getter should reflect the new value
+    expect(store.obj.value).toBe(100);
+
+    // Make more state changes
+    store.$patch({ count: 10 });
+
+    // Getter should still work after more state changes
+    expect(store.obj.value).toBe(100);
+
+    // Test that descriptor is preserved
+    const descriptor = Object.getOwnPropertyDescriptor(store.obj, "value");
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(descriptor?.get).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(descriptor?.set).toBeDefined();
+    expect(descriptor?.value).toBeUndefined();
+  });
+
+  test("getOwnPropertyDescriptor should handle all property types correctly", () => {
+    const store = create({
+      count: 0,
+      name: "test",
+      [get("doubled")]() {
+        return this.count * 2;
+      },
+      increment() {
+        this.count++;
+      },
+      deleteProperty(prop: string) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete (this as any)[prop];
+        expect(Object.getOwnPropertyDescriptor(store, prop)).toBeUndefined();
+      },
+    });
+
+    // Test regular state property descriptor
+    const countDesc = Object.getOwnPropertyDescriptor(store, "count");
+    expect(countDesc).toBeDefined();
+    expect(countDesc!.value).toBe(0);
+    expect(countDesc!.enumerable).toBe(true);
+
+    // Test computed property descriptor
+    const doubledDesc = Object.getOwnPropertyDescriptor(store, "doubled");
+    expect(doubledDesc).toBeDefined();
+    expect(doubledDesc!.enumerable).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(doubledDesc!.get).toBeDefined();
+
+    // Test action property descriptor
+    const incrementDesc = Object.getOwnPropertyDescriptor(store, "increment");
+    expect(incrementDesc).toBeDefined();
+    expect(typeof incrementDesc!.value).toBe("function");
+
+    // Test helper method descriptor
+    const getDesc = Object.getOwnPropertyDescriptor(store, "$get");
+    expect(getDesc).toBeDefined();
+    expect(typeof getDesc!.value).toBe("function");
+
+    // Test mutated property descriptor
+    store.count = 5;
+    const updatedCountDesc = Object.getOwnPropertyDescriptor(store, "count");
+    expect(updatedCountDesc).toBeDefined();
+    expect(updatedCountDesc!.value).toBe(5);
+
+    // Test deleted property descriptor
+    store.deleteProperty("name");
+    const nameDesc = Object.getOwnPropertyDescriptor(store, "name");
+    expect(nameDesc).toBeUndefined();
+
+    // Verify store state after modifications
+    expect(store.count).toBe(5);
+    expect(store.name).toBe(undefined);
+  });
+
+  test("ownKeys should return all expected keys", () => {
+    const store = create({
+      count: 0,
+      name: "test",
+      active: true,
+      [get("doubled")]() {
+        return this.count * 2;
+      },
+      increment() {
+        this.count++;
+      },
+      reset() {
+        this.count = 0;
+      },
+    });
+
+    // Get all keys
+    const keys = Object.keys(store);
+
+    // Check helper methods
+    expect(keys).toContain("$get");
+    expect(keys).toContain("$set");
+    expect(keys).toContain("$patch");
+    expect(keys).toContain("$subscribe");
+
+    // Check state properties
+    expect(keys).toContain("count");
+    expect(keys).toContain("name");
+    expect(keys).toContain("active");
+
+    // Check computed properties
+    expect(keys).toContain("doubled");
+
+    // Check actions
+    expect(keys).toContain("increment");
+    expect(keys).toContain("reset");
+
+    // Test adding a property
+    (store as any).newProp = "added";
+    expect(Object.keys(store)).toContain("newProp");
+
+    // Test deleting a property
+    delete (store as any).name;
+    expect(Object.keys(store)).not.toContain("name");
+
+    // Test that deleted properties are not enumerated
+    const keysAfterDelete = Object.keys(store);
+    expect(keysAfterDelete).not.toContain("name");
+
+    // Check total number of keys after modifications
+    expect(Object.keys(store).length).toBe(Object.keys(store).length);
+  });
+
+  test("getOwnPropertyDescriptor and ownKeys work during multi-property mutations", () => {
+    const store = create({
+      user: {
+        firstName: "John",
+        lastName: "Doe",
+        age: 30,
+      },
+      settings: {
+        theme: "light",
+        notifications: true,
+      },
+
+      updateProfile() {
+        // Multiple mutations in one action
+        this.user.firstName = "Jane";
+        this.user.age = 31;
+        delete (this.settings as any).notifications;
+        (this as any).newSetting = "added";
+
+        // Test descriptors during mutations
+        const firstNameDesc = Object.getOwnPropertyDescriptor(this.user, "firstName");
+        const notificationsDesc = Object.getOwnPropertyDescriptor(this.settings, "notifications");
+        const newSettingDesc = Object.getOwnPropertyDescriptor(this, "newSetting");
+
+        // Test ownKeys during mutations
+        const userKeys = Object.keys(this.user);
+        const settingsKeys = Object.keys(this.settings);
+        const storeKeys = Object.keys(this);
+
+        return {
+          descriptors: {
+            firstName: firstNameDesc ? { value: firstNameDesc.value } : undefined,
+            notifications: notificationsDesc,
+            newSetting: newSettingDesc ? { value: newSettingDesc.value } : undefined,
+          },
+          keys: {
+            user: userKeys,
+            settings: settingsKeys,
+            store: storeKeys.filter((k) => !k.startsWith("$")), // Filter out helper methods
+          },
+        };
+      },
+    });
+
+    // Run the action that tests descriptors during mutations
+    const result = store.updateProfile();
+
+    // Verify descriptors during mutations
+    expect(result.descriptors.firstName!.value).toBe("Jane");
+    expect(result.descriptors.notifications).toBeUndefined();
+    expect(result.descriptors.newSetting!.value).toBe("added");
+
+    // Verify keys during mutations
+    expect(result.keys.user).toContain("firstName");
+    expect(result.keys.user).toContain("lastName");
+    expect(result.keys.user).toContain("age");
+
+    expect(result.keys.settings).toContain("theme");
+    expect(result.keys.settings).not.toContain("notifications");
+
+    expect(result.keys.store).toContain("user");
+    expect(result.keys.store).toContain("settings");
+    expect(result.keys.store).toContain("newSetting");
+    expect(result.keys.store).toContain("updateProfile");
+
+    // Verify final state
+    expect(store.user.firstName).toBe("Jane");
+    expect(store.settings.notifications).toBeUndefined();
+    expect((store as any).newSetting).toBe("added");
+    expect("notifications" in store.settings).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
-import { createStore } from "troza";
+import { create, get } from "troza";
 import { hookify } from "troza/react";
 
-const bookStore = createStore({
+const bookStore = create({
   authors: [
     {
       id: 1,
@@ -68,178 +68,172 @@ const bookStore = createStore({
     onlyShowInStock: false,
   },
 
-  // Cached computed depending on their auto-tracked dependencies
-  computed: {
-    // Gets all books across all authors
-    allBooks() {
-      return this.authors.flatMap((author) => author.books);
-    },
-
-    // Books that match the current filters
-    filteredBooks() {
-      const { searchTerm, selectedGenres, onlyShowInStock, yearRange } = this.filters;
-
-      return this.allBooks.filter((book) => {
-        // Search term filter
-        if (searchTerm && !book.title.toLowerCase().includes(searchTerm.toLowerCase())) {
-          return false;
-        }
-
-        // Only show in stock
-        if (onlyShowInStock && !book.inStock) {
-          return false;
-        }
-
-        // Year range filter
-        if (book.year < yearRange.min || book.year > yearRange.max) {
-          return false;
-        }
-
-        // Genre filter - need to find the author to check genres
-        if (selectedGenres.length > 0) {
-          const author = this.authors.find((a) => a.books.some((b) => b.id === book.id));
-
-          if (!author || !author.genres.some((g) => selectedGenres.includes(g))) {
-            return false;
-          }
-        }
-
-        return true;
-      });
-    },
-
-    // Available genres from all authors (no duplicates)
-    availableGenres() {
-      const genres = new Set();
-      this.authors.forEach((author) => {
-        author.genres.forEach((genre) => genres.add(genre));
-      });
-      return Array.from(genres) as string[];
-    },
-
-    // Compute borrowing statistics
-    borrowingStats() {
-      const borrowedCount = this.user.borrowedBooks.length;
-      const readingListCount = this.user.readingList.length;
-
-      return {
-        borrowedCount,
-        readingListCount,
-        totalCount: borrowedCount + readingListCount,
-      };
-    },
-
-    // Recommended books based on user preferences
-    recommendedBooks() {
-      // Books from favorite genres that aren't borrowed or in reading list
-      const userBookIds = [...this.user.borrowedBooks, ...this.user.readingList];
-
-      return this.allBooks
-        .filter((book) => {
-          // Skip books the user already has
-          if (userBookIds.includes(book.id)) {
-            return false;
-          }
-
-          // Find the book's author
-          const author = this.authors.find((a) => a.books.some((b) => b.id === book.id));
-
-          // Check if any of the author's genres match user's favorites
-          return author && author.genres.some((g) => this.user.favoriteGenres.includes(g));
-        })
-        .slice(0, 3); // Just get top 3 recommendations
-    },
+  /* Cached computed depending on their auto-tracked dependencies */
+  // Gets all books across all authors
+  [get("allBooks")]() {
+    return this.authors.flatMap((author) => author.books);
   },
 
-  // Actions directly available via `store.action()`
-  actions: {
-    // Add a book to a specific author
-    addBook(authorId: number, title: string, pages: number, year: number) {
-      const author = this.authors.find((a) => a.id === authorId);
-      if (author) {
-        const newId = Math.max(...this.allBooks.map((b) => b.id)) + 1;
-        author.books.push({
-          id: newId,
-          title,
-          pages,
-          year,
-          inStock: true,
-        });
+  // Books that match the current filters
+  [get("filteredBooks")]() {
+    const { searchTerm, selectedGenres, onlyShowInStock, yearRange } = this.filters;
+
+    return this.allBooks.filter((book) => {
+      // Search term filter
+      if (searchTerm && !book.title.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
       }
-    },
 
-    // Borrow a book
-    borrowBook(bookId: number) {
-      // Check if book is in stock
-      const book = this.allBooks.find((b) => b.id === bookId);
-      if (book && book.inStock) {
-        // Update book status
-        book.inStock = false;
+      // Only show in stock
+      if (onlyShowInStock && !book.inStock) {
+        return false;
+      }
 
-        // Add to user's borrowed books
-        if (!this.user.borrowedBooks.includes(bookId)) {
-          this.user.borrowedBooks.push(bookId);
-        }
+      // Year range filter
+      if (book.year < yearRange.min || book.year > yearRange.max) {
+        return false;
+      }
 
-        // Remove from reading list if present
-        const readingListIndex = this.user.readingList.indexOf(bookId);
-        if (readingListIndex !== -1) {
-          this.user.readingList.splice(readingListIndex, 1);
+      // Genre filter - need to find the author to check genres
+      if (selectedGenres.length > 0) {
+        const author = this.authors.find((a) => a.books.some((b) => b.id === book.id));
+
+        if (!author || !author.genres.some((g) => selectedGenres.includes(g))) {
+          return false;
         }
       }
-    },
 
-    // Return a borrowed book
-    returnBook(bookId: number) {
+      return true;
+    });
+  },
+
+  // Available genres from all authors (no duplicates)
+  [get("availableGenres")]() {
+    const genres = new Set();
+    this.authors.forEach((author) => {
+      author.genres.forEach((genre) => genres.add(genre));
+    });
+    return Array.from(genres) as string[];
+  },
+
+  // Compute borrowing statistics
+  [get("borrowingStats")]() {
+    const borrowedCount = this.user.borrowedBooks.length;
+    const readingListCount = this.user.readingList.length;
+
+    return {
+      borrowedCount,
+      readingListCount,
+      totalCount: borrowedCount + readingListCount,
+    };
+  },
+
+  // Recommended books based on user preferences
+  [get("recommendedBooks")]() {
+    // Books from favorite genres that aren't borrowed or in reading list
+    const userBookIds = [...this.user.borrowedBooks, ...this.user.readingList];
+
+    return this.allBooks
+      .filter((book) => {
+        // Skip books the user already has
+        if (userBookIds.includes(book.id)) {
+          return false;
+        }
+
+        // Find the book's author
+        const author = this.authors.find((a) => a.books.some((b) => b.id === book.id));
+
+        // Check if any of the author's genres match user's favorites
+        return author && author.genres.some((g) => this.user.favoriteGenres.includes(g));
+      })
+      .slice(0, 3); // Just get top 3 recommendations
+  },
+
+  /* Actions directly available via `store.action()` */
+  // Add a book to a specific author
+  addBook(authorId: number, title: string, pages: number, year: number) {
+    const author = this.authors.find((a) => a.id === authorId);
+    if (author) {
+      const newId = Math.max(...this.allBooks.map((b) => b.id)) + 1;
+      author.books.push({
+        id: newId,
+        title,
+        pages,
+        year,
+        inStock: true,
+      });
+    }
+  },
+
+  // Borrow a book
+  borrowBook(bookId: number) {
+    // Check if book is in stock
+    const book = this.allBooks.find((b) => b.id === bookId);
+    if (book && book.inStock) {
       // Update book status
-      const book = this.allBooks.find((b) => b.id === bookId);
-      if (book) {
-        book.inStock = true;
+      book.inStock = false;
+
+      // Add to user's borrowed books
+      if (!this.user.borrowedBooks.includes(bookId)) {
+        this.user.borrowedBooks.push(bookId);
       }
 
-      // Remove from user's borrowed books
-      const index = this.user.borrowedBooks.indexOf(bookId);
-      if (index !== -1) {
-        this.user.borrowedBooks.splice(index, 1);
+      // Remove from reading list if present
+      const readingListIndex = this.user.readingList.indexOf(bookId);
+      if (readingListIndex !== -1) {
+        this.user.readingList.splice(readingListIndex, 1);
       }
-    },
+    }
+  },
 
-    // Add/remove from reading list
-    toggleReadingList(bookId: number) {
-      const index = this.user.readingList.indexOf(bookId);
-      if (index === -1) {
-        // Add to reading list
-        this.user.readingList.push(bookId);
-      } else {
-        // Remove from reading list
-        this.user.readingList.splice(index, 1);
-      }
-    },
+  // Return a borrowed book
+  returnBook(bookId: number) {
+    // Update book status
+    const book = this.allBooks.find((b) => b.id === bookId);
+    if (book) book.inStock = true;
 
-    // Update search filters
-    setSearchTerm(term: string) {
-      this.filters.searchTerm = term;
-    },
+    // Remove from user’s borrowed books
+    const index = this.user.borrowedBooks.indexOf(bookId);
+    if (index !== -1) {
+      this.user.borrowedBooks.splice(index, 1);
+    }
+  },
 
-    // Toggle a genre filter
-    toggleGenreFilter(genre: string) {
-      const index = this.filters.selectedGenres.indexOf(genre);
-      if (index === -1) {
-        this.filters.selectedGenres.push(genre);
-      } else {
-        this.filters.selectedGenres.splice(index, 1);
-      }
-    },
+  // Add/remove from reading list
+  toggleReadingList(bookId: number) {
+    const index = this.user.readingList.indexOf(bookId);
+    if (index === -1) {
+      // Add to reading list
+      this.user.readingList.push(bookId);
+    } else {
+      // Remove from reading list
+      this.user.readingList.splice(index, 1);
+    }
+  },
 
-    // Set the year range filter
-    setYearRange(min: number, max: number) {
-      this.filters.yearRange = { min, max };
-    },
+  // Update search filters
+  setSearchTerm(term: string) {
+    this.filters.searchTerm = term;
+  },
 
-    // Update a user's favorite genres
-    updateFavoriteGenres(genres: string[]) {
-      this.user.favoriteGenres = [...genres];
-    },
+  // Toggle a genre filter
+  toggleGenreFilter(genre: string) {
+    const index = this.filters.selectedGenres.indexOf(genre);
+    if (index === -1) {
+      this.filters.selectedGenres.push(genre);
+    } else {
+      this.filters.selectedGenres.splice(index, 1);
+    }
+  },
+
+  // Set the year range filter
+  setYearRange(min: number, max: number) {
+    this.filters.yearRange = { min, max };
+  },
+
+  // Update a user's favorite genres
+  updateFavoriteGenres(genres: string[]) {
+    this.user.favoriteGenres = [...genres];
   },
 });
 
