@@ -202,6 +202,9 @@ export function hookify<
   if (!store || typeof store !== "object" || !("$get" in store) || !("$set" in store))
     throw new TypeError("The store must be a valid store created by `create`.");
 
+  // Set the name for debugging purposes (e.g., Redux DevTools)
+  (store as any)["troza/internal"].name = name;
+
   return Object.defineProperty(
     <Selected = PrettifyReadonly<State & Computed>>(
       selector?: (state: PrettifyReadonly<State & Computed>) => Selected,

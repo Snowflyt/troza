@@ -276,8 +276,21 @@ export function create<Slice extends object>(
   const computed = {} as ComputedOptions;
   const actions = {} as Actions;
 
+  // This is used only for internal or 3rd-party libraries to access the store after initialization
+  // (e.g., for devtools)
+  let internal_initializer: ((store: any, storeApi: any) => void) | null = null;
+
   for (const key of Reflect.ownKeys(slice)) {
     const descriptor = Object.getOwnPropertyDescriptor(slice, key)!;
+
+    if (
+      typeof key === "string" &&
+      key === "troza/initializer" &&
+      typeof descriptor.value === "function"
+    ) {
+      internal_initializer = descriptor.value;
+      continue;
+    }
 
     if (
       typeof key === "string" &&
@@ -542,6 +555,9 @@ export function create<Slice extends object>(
     $watch: watch as never,
   } satisfies StoreBase<State, Computed, Actions>;
 
+  // Used to store internal data for devtools or other libraries
+  const internal_options: Record<string | symbol, unknown> = {};
+
   /* Actions */
   const helperMethodNames = new Set(Object.keys(store));
   const computedNames = new Set(Object.keys(computed));
@@ -683,6 +699,7 @@ export function create<Slice extends object>(
 
   const proxiedStore = new Proxy(store, {
     get: (_, prop) => {
+      if (prop === "troza/internal") return internal_options;
       if (prop in store) return store[prop as keyof typeof store];
 
       if (typeof prop === "string" && computedNames.has(prop)) {
@@ -753,7 +770,10 @@ export function create<Slice extends object>(
     (store as any)[key] = renameFunction((...args: never) => act(handler, args), key);
   }
 
+  if (internal_initializer) internal_initializer(proxiedStore, store);
+
   readonly(store, false);
+
   return proxiedStore as any;
 }
 

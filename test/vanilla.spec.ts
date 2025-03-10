@@ -143,6 +143,32 @@ describe("Basic State Management", () => {
     expect(store.doubled).toBe(20);
     expect(store.$get().doubled).toBe(20);
   });
+
+  test("troza/initializer is called with store during initialization", () => {
+    // Create a store with the special initializer property
+    const initializerSpy = vi.fn();
+
+    const store = create({
+      count: 0,
+      name: "initial",
+
+      // Special property that will be called during initialization
+      "troza/initializer": (store: any) => {
+        initializerSpy(store);
+        // Initialize state during creation
+        store.count = 10;
+        store.name = "initialized";
+      },
+    });
+
+    // Verify the initializer was called with the store
+    expect(initializerSpy).toHaveBeenCalledTimes(1);
+    expect(initializerSpy).toHaveBeenCalledWith(store);
+
+    // Verify the initializer modified the initial state
+    expect(store.count).toBe(10);
+    expect(store.name).toBe("initialized");
+  });
 });
 
 describe("Computed States", () => {

@@ -320,7 +320,7 @@ It is also possible to define actions in a more functional style without the nee
 
 <details>
   <summary>Click to see an example of defining actions in a functional style</summary>
-  
+
 You can create a helper function like this:
 
 ```typescript
@@ -390,7 +390,7 @@ While this approach is possible, it is not recommended because it violates Troza
 Also, such syntax does not handle well with generic TypeScript functions, as it requires manual type annotations for `state` when you define an action with generic type parameters:
 
 ```typescript
-const f = def(<T,>(state, value: T) => {
+const f = def(<T>(state, value: T) => {
   //               ~~~~~
   // Parameter 'state' implicitly has an 'any' type.ts(7006)
 });
@@ -716,6 +716,35 @@ function UserProfile() {
 You might have noticed that `useWatch` is exactly an alias of `useStore` that allows you to access the previous state, but it is more readable and explicitly intended for watching changes.
 
 Note that, like subscribers, watchers are only attempted to be triggered after the next state change rather than immediately upon creation. Therefore, avoid using them to initialize state or trigger side effects that should run as soon as the component mounts.
+
+### Redux DevTools
+
+Install the [Redux DevTools Chrome extension](https://chromewebstore.google.com/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd) to use the DevTools middleware.
+
+```typescript
+import { devtools } from "troza/middleware";
+
+const counterStore = create(devtools({ count: 0, ... }));
+const useCounterStore = hookify("count", counterStore);
+```
+
+By default, Troza groups all stores into a single global group for each application. That is to say, you can see all stores in a single Redux DevTools tab. As is shown in the screenshot below. Note that computed states are also shown in the DevTools, with a `~getter:` prefix.
+
+![DevTools middleware screenshot](./docs/devtools-screenshot.png)
+
+All store with the same group name will be grouped together as a Redux DevTools tab. To specify a custom group name for a store, you can pass it as the second argument to `devtools`:
+
+```typescript
+const counterStore = create(devtools({ count: 0, ... }, { group: "Counter" }));
+```
+
+You can also specify the name of the store in the DevTools by passing a `name` option:
+
+```typescript
+const counterStore = create(devtools({ count: 0, ... }, { name: "count" }));
+```
+
+You don’t have to pass this option if you already used the `hookify` utility, as it automatically sets the store name for you. If the name of a store cannot be determined, it will be displayed as “anonymous”.
 
 ### Use Troza more than a store
 

@@ -3,7 +3,7 @@
     "target": "ES2015",
     "composite": true,
     "useDefineForClassFields": false,
-    "lib": ["ES2015"],
+    "lib": ["DOM", "ES2015"],
     "module": "ES2015",
     "types": [],
 
@@ -17,6 +17,7 @@
 
     /* Linting */
     "strict": true,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
