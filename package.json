@@ -42,7 +42,8 @@
     "test:cov": "vitest run --environment happy-dom --coverage --coverage.reporter=text --coverage.reporter=lcov --coverage.include \"src/**/*.ts\" --coverage.exclude \"src/middleware/index.ts\" --coverage.exclude \"src/middleware/devtools.ts\"",
     "test:ui": "vitest --ui --environment happy-dom --coverage.enabled=true --coverage.include \"src/**/*.ts\" --coverage.exclude \"src/middleware/index.ts\" --coverage.exclude \"src/middleware/devtools.ts\"",
     "test:watch": "vitest --environment happy-dom",
-    "test:watch-cov": "vitest --environment happy-dom --coverage --coverage.reporter=text --coverage.reporter=lcov --coverage.include \"src/**/*.ts\" --coverage.exclude \"src/middleware/index.ts\" --coverage.exclude \"src/middleware/devtools.ts\""
+    "test:watch-cov": "vitest --environment happy-dom --coverage --coverage.reporter=text --coverage.reporter=lcov --coverage.include \"src/**/*.ts\" --coverage.exclude \"src/middleware/index.ts\" --coverage.exclude \"src/middleware/devtools.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
   "dependencies": {
     "proxy-compare": "^3.0.1"
