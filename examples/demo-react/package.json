@@ -2,6 +2,15 @@
   "name": "troza-demo-react",
   "version": "0.0.0",
   "private": true,
+  "homepage": "https://github.com/Snowflyt/troza/tree/main/examples/demo-react",
+  "bugs": {
+    "url": "https://github.com/Snowflyt/troza/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Snowflyt/troza.git",
+    "directory": "examples/demo-react"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
