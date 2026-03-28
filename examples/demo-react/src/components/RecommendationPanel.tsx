@@ -23,7 +23,7 @@ const RecommendationPanel: React.FC = () => {
   if (recommendedBooks.length === 0) return null;
 
   return (
-    <div className="rounded-lg bg-gradient-to-r from-amber-50 to-amber-100 p-4 shadow">
+    <div className="rounded-lg bg-linear-to-r from-amber-50 to-amber-100 p-4 shadow">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-xl font-semibold text-amber-900">Recommended for You</h2>
         <div className="flex gap-1">

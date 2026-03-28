@@ -12,7 +12,7 @@ const AuthorSection: React.FC = () => {
   const [newBookPages, setNewBookPages] = useState(100);
   const [newBookYear, setNewBookYear] = useState(new Date().getFullYear());
 
-  const handleAddBook = (e: React.FormEvent) => {
+  const handleAddBook = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (selectedAuthorId !== null && newBookTitle.trim()) {
       addBook(selectedAuthorId, newBookTitle, newBookPages, newBookYear);

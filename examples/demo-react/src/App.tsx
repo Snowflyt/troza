@@ -9,7 +9,7 @@ function App() {
   const [selectedTab, setSelectedTab] = useState<"books" | "authors" | "user">("books");
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-gradient-to-b from-gray-50 to-gray-100 py-8">
+    <div className="flex min-h-screen flex-col items-center bg-linear-to-b from-gray-50 to-gray-100 py-8">
       <div className="container mx-auto flex max-w-6xl flex-col items-center px-4">
         <header className="mb-8 w-full text-center">
           <h1 className="mb-6 text-4xl font-bold text-indigo-700">Book Collection Manager</h1>

@@ -5,7 +5,9 @@
     "target": "ESNext",
     "lib": ["DOM", "ESNext"],
     "module": "ESNext",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "rootDir": "."
   },
-  "include": ["src/**/*", "test/**/*"]
+  "include": ["src/**/*", "test/**/*", "bench/**/*"],
+  "exclude": []
 }

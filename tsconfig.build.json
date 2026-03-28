@@ -5,31 +5,29 @@
     "useDefineForClassFields": false,
     "lib": ["DOM", "ES2015"],
     "module": "ES2015",
-    "types": [],
+    "moduleDetection": "force",
+    "skipLibCheck": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": true,
-    "resolveJsonModule": true,
     "isolatedModules": true,
+    "rootDir": "src",
     "outDir": "dist",
 
     /* Linting */
     "strict": true,
-    "skipLibCheck": true,
+    "erasableSyntaxOnly": true,
+    "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
 
     /* Type */
     "declaration": true
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.spec.ts", "src/**/*.bench.ts"],
-  "tsc-alias": {
-    "resolveFullPaths": true
-  }
+  "exclude": ["src/**/*.spec.ts", "src/**/*.bench.ts"]
 }

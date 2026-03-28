@@ -331,7 +331,7 @@ export function devtools<Slice extends object>(
       devTools =
         instances.get(group) ||
         extension.connect({
-          name: group === "troza/globalStore" ? undefined : group,
+          ...(group === "troza/globalStore" ? {} : { name: group }),
           ...restOptions,
         });
 
@@ -488,6 +488,7 @@ export function devtools<Slice extends object>(
           }
 
           if (
+            // eslint-disable-next-line @typescript-eslint/prefer-includes
             Object.keys(groupStoreApis.get(group)![dispatchedStoreName]!.actions).indexOf(
               actionName,
             ) === -1

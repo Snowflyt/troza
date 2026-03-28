@@ -684,7 +684,7 @@ export function create<Slice extends object>(
         }
         if (desc && !("value" in desc)) {
           if (!("set" in desc)) return true;
-          desc.set!.call(handler, value);
+          desc.set.call(handler, value);
           return true;
         }
         if (desc && desc.value === value) return true;
