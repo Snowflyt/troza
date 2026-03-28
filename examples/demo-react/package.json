@@ -23,7 +23,7 @@
   "dependencies": {
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "troza": "^0.2.1"
+    "troza": "^0.2.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
