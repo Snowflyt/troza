@@ -25,6 +25,25 @@
   "author": "Ge Gao (Snowflyt) <gaoge011022@gmail.com>",
   "sideEffects": false,
   "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./index": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./react": {
+      "types": "./react.d.ts",
+      "import": "./react.js"
+    },
+    "./middleware": {
+      "types": "./middleware/index.d.ts",
+      "import": "./middleware/index.js"
+    }
+  },
   "main": "./index.js",
   "module": "./index.js",
   "types": "./index.d.ts",
