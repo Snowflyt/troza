@@ -441,9 +441,13 @@ export function create<Slice extends object>(
           const affected: Affected = new WeakMap();
           const proxy = createProxyToCompare(state, affected, undefined, targetCache);
           activeStateProxies.push(proxy);
-          const thisArg = getComputedThis(computedState, proxy);
-          const value = untrack(getter.call(thisArg));
-          activeStateProxies.pop();
+          let value: unknown;
+          try {
+            const thisArg = getComputedThis(computedState, proxy);
+            value = untrack(getter.call(thisArg));
+          } finally {
+            activeStateProxies.pop();
+          }
           touchAffected(state, state, affected);
           if (activeStateProxies.length)
             touchAffected(activeStateProxies[activeStateProxies.length - 1], state, affected);
@@ -716,9 +720,13 @@ export function create<Slice extends object>(
         const affected: Affected = new WeakMap();
         const proxyToCompare = createProxyToCompare(state, affected, undefined, targetCache);
         activeStateProxies.push(proxyToCompare);
-        const thisArg = getComputedThis(_computedState, proxyToCompare);
-        const value = untrack(computed[prop as keyof Computed].call(thisArg));
-        activeStateProxies.pop();
+        let value: unknown;
+        try {
+          const thisArg = getComputedThis(_computedState, proxyToCompare);
+          value = untrack(computed[prop as keyof Computed].call(thisArg));
+        } finally {
+          activeStateProxies.pop();
+        }
         // Touch proxied state to create potential uncreated proxies
         touchAffected(proxy(state), state, affected);
         computedCache.set(prop, { state, affected, cachedResult: value });
