@@ -392,7 +392,7 @@ export function create<Slice extends object>(
     }
     for (const key in actions) {
       const handler = actions[key];
-      const fn = renameFunction((...args: never) => handler.apply(thisArg, args), "key");
+      const fn = renameFunction((...args: never) => handler.apply(thisArg, args), key);
       (thisArg as any)[key] = fn;
     }
     return thisArg;
